@@ -53,6 +53,31 @@ CREATE TABLE IF NOT EXISTS templates (
 
 CREATE INDEX IF NOT EXISTS idx_templates_status ON templates(status);
 
+CREATE TABLE IF NOT EXISTS contract_bundles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bundle_no TEXT NOT NULL UNIQUE,
+    creator_id INTEGER NOT NULL REFERENCES users(id),
+    creator_name TEXT NOT NULL,
+    department TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS contract_bundle_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL DEFAULT '',
+    trigger_department TEXT NOT NULL DEFAULT '',
+    trigger_template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+    required_template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(trigger_department, trigger_template_id, required_template_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bundle_rules_trigger
+    ON contract_bundle_rules(trigger_department, trigger_template_id, enabled);
+
 CREATE TABLE IF NOT EXISTS contracts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     contract_no TEXT NOT NULL UNIQUE,
@@ -65,6 +90,7 @@ CREATE TABLE IF NOT EXISTS contracts (
     title TEXT NOT NULL,
     field_values_json TEXT NOT NULL DEFAULT '{}',
     table_adjustments_json TEXT NOT NULL DEFAULT '{}',
+    bundle_id INTEGER REFERENCES contract_bundles(id) ON DELETE SET NULL,
     status TEXT NOT NULL DEFAULT 'draft'
         CHECK (status IN ('draft', 'pending', 'approved', 'rejected')),
     creator_id INTEGER NOT NULL REFERENCES users(id),
@@ -154,6 +180,10 @@ def init_db() -> None:
         if "contract_code" not in contract_columns:
             conn.execute(
                 "ALTER TABLE contracts ADD COLUMN contract_code TEXT NOT NULL DEFAULT ''"
+            )
+        if "bundle_id" not in contract_columns:
+            conn.execute(
+                "ALTER TABLE contracts ADD COLUMN bundle_id INTEGER REFERENCES contract_bundles(id)"
             )
         conn.execute(
             """

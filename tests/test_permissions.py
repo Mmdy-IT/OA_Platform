@@ -41,7 +41,13 @@ def test_login_returns_module_permissions(client, login_as):
 
     login_as(client, "legal", "Legal@123")
     legal = client.get("/api/auth/me").json()["user"]
-    assert legal["permissions"] == ["dashboard", "contracts", "reviews", "templates"]
+    assert legal["permissions"] == [
+        "dashboard",
+        "contracts",
+        "parties",
+        "reviews",
+        "templates",
+    ]
 
 
 def test_new_user_without_permission_record_gets_ordinary_permissions(monkeypatch):
@@ -154,6 +160,7 @@ def test_permission_management_endpoints(client, login_as, monkeypatch):
     assert [item["key"] for item in payload["modules"]] == [
         "dashboard",
         "contracts",
+        "parties",
         "reviews",
         "templates",
     ]

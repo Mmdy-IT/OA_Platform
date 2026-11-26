@@ -1,5 +1,8 @@
 import type {
   Contract,
+  BundleRule,
+  BundleRulePayload,
+  BundleRequirement,
   ContractTableAdjustments,
   ContractPayload,
   ContractSummary,
@@ -82,7 +85,18 @@ export const api = {
   dashboard: () => request<DashboardData>("/dashboard"),
   notifications: () =>
     request<{ items: NotificationItem[]; unread_count: number }>("/notifications"),
-  parties: () => request<{ items: PartyInfo[] }>("/parties"),
+  parties: (q = "", partyType = "") => {
+    const search = new URLSearchParams();
+    if (q) search.set("q", q);
+    if (partyType) search.set("party_type", partyType);
+    const suffix = search.toString();
+    return request<{ items: PartyInfo[] }>(`/parties${suffix ? `?${suffix}` : ""}`);
+  },
+  createParty: (payload: PartyInfo) =>
+    request<PartyInfo>("/parties", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   warehouses: () => request<{ items: WarehouseInfo[] }>("/warehouses"),
 
   adminPermissions: () =>
@@ -134,6 +148,28 @@ export const api = {
   contract: (id: number | string) => request<Contract>(`/contracts/${id}`),
   createContract: (payload: ContractPayload) =>
     request<Contract>("/contracts", { method: "POST", body: JSON.stringify(payload) }),
+  createContractBundle: (payload: ContractPayload) =>
+    request<Contract>("/contracts/bundle", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  bundleRequirements: (templateId: number) =>
+    request<{ items: BundleRequirement[]; department: string }>(
+      `/bundle-requirements?template_id=${templateId}`,
+    ),
+  bundleRules: () => request<{ items: BundleRule[] }>("/bundle-rules"),
+  createBundleRule: (payload: BundleRulePayload) =>
+    request<BundleRule>("/bundle-rules", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateBundleRule: (id: number, payload: BundleRulePayload) =>
+    request<BundleRule>(`/bundle-rules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  deleteBundleRule: (id: number) =>
+    request<{ ok: boolean }>(`/bundle-rules/${id}`, { method: "DELETE" }),
   updateContract: (
     id: number | string,
     payload: {

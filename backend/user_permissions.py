@@ -49,6 +49,12 @@ MODULES: list[dict[str, str]] = [
         "description": "起草、查看、提交并下载本人发起的合同。",
     },
     {
+        "key": "parties",
+        "label": "乙方主体信息",
+        "group": "合同管理",
+        "description": "查看、搜索和新增公司主体信息。",
+    },
+    {
         "key": "reviews",
         "label": "审核工作台",
         "group": "合同管理",
@@ -67,7 +73,7 @@ MODULE_ORDER = {key: index for index, key in enumerate(MODULE_KEYS)}
 
 ROLE_DEFAULT_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "admin": MODULE_KEYS,
-    "legal": ("dashboard", "contracts", "reviews", "templates"),
+    "legal": ("dashboard", "contracts", "parties", "reviews", "templates"),
     "business": ("dashboard", "contracts"),
 }
 

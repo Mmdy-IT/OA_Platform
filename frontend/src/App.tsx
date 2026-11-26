@@ -10,6 +10,7 @@ import {
 } from "./auth";
 import { AppLayout } from "./components/AppLayout";
 import { AdminPermissionsPage } from "./pages/AdminPermissionsPage";
+import { BundleRulesPage } from "./pages/BundleRulesPage";
 import { ContractDetailPage } from "./pages/ContractDetailPage";
 import { ContractsPage } from "./pages/ContractsPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -18,6 +19,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { NewContractPage } from "./pages/NewContractPage";
 import { NoAccessPage } from "./pages/NoAccessPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { PartyDirectoryPage } from "./pages/PartyDirectoryPage";
 import { ReviewInboxPage } from "./pages/ReviewInboxPage";
 import { TemplateEditorPage } from "./pages/TemplateEditorPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
@@ -127,6 +129,14 @@ export default function App() {
                   }
                 />
                 <Route
+                  path="/parties"
+                  element={
+                    <RequirePermission permissions={["parties"]}>
+                      <PartyDirectoryPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
                   path="/templates"
                   element={
                     <RequirePermission permissions={["templates"]}>
@@ -147,6 +157,14 @@ export default function App() {
                   element={
                     <RequirePermission permissions={["templates"]}>
                       <TemplateEditorPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/bundle-rules"
+                  element={
+                    <RequirePermission permissions={["templates"]}>
+                      <BundleRulesPage />
                     </RequirePermission>
                   }
                 />

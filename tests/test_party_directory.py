@@ -27,7 +27,11 @@ def test_party_directory_requires_login(client):
 
 def test_party_directory_returns_entities(client, login_as, monkeypatch):
     login_as(client, "business", "Business@123")
-    monkeypatch.setattr(party_db, "list_parties", lambda force_refresh=False: [PARTY])
+    monkeypatch.setattr(
+        party_db,
+        "list_parties",
+        lambda force_refresh=False, query="", party_type="": [PARTY],
+    )
 
     response = client.get("/api/parties")
 
@@ -38,7 +42,7 @@ def test_party_directory_returns_entities(client, login_as, monkeypatch):
 def test_party_directory_reports_unavailable_database(client, login_as, monkeypatch):
     login_as(client, "business", "Business@123")
 
-    def unavailable(force_refresh=False):
+    def unavailable(force_refresh=False, query="", party_type=""):
         raise party_db.PartyDatabaseError("offline")
 
     monkeypatch.setattr(party_db, "list_parties", unavailable)
@@ -46,6 +50,35 @@ def test_party_directory_reports_unavailable_database(client, login_as, monkeypa
 
     assert response.status_code == 503
     assert "主体信息库" in response.json()["detail"]
+
+
+def test_create_party_requires_party_permission(client, login_as):
+    login_as(client, "business", "Business@123")
+    response = client.post("/api/parties", json=PARTY)
+    assert response.status_code == 403
+
+
+def test_create_party_endpoint(client, login_as, monkeypatch):
+    login_as(client, "legal", "Legal@123")
+    captured = {}
+
+    def fake_create(values):
+        captured.update(values)
+        return values
+
+    monkeypatch.setattr(party_db, "create_party", fake_create)
+    response = client.post("/api/parties", json=PARTY)
+
+    assert response.status_code == 201
+    assert response.json() == PARTY
+    assert captured["entity_name"] == PARTY["entity_name"]
+
+
+def test_create_party_requires_bank_name(client, login_as):
+    login_as(client, "legal", "Legal@123")
+    payload = {**PARTY, "bank_name": ""}
+    response = client.post("/api/parties", json=payload)
+    assert response.status_code == 422
 
 
 def test_warehouse_directory_requires_login(client):

@@ -1,5 +1,5 @@
 export type Role = "admin" | "legal" | "business";
-export type PermissionKey = "dashboard" | "contracts" | "reviews" | "templates";
+export type PermissionKey = "dashboard" | "contracts" | "parties" | "reviews" | "templates";
 
 export interface User {
   id: number;
@@ -55,6 +55,7 @@ export type WarehouseAutoFillRole = "warehouse_short_name" | "warehouse_address"
 export type AutoFillRole = PartyAutoFillRole | WarehouseAutoFillRole;
 
 export interface PartyInfo {
+  party_type: "甲方" | "乙方";
   entity_name: string;
   unified_social_credit_code: string;
   account_name: string;
@@ -116,6 +117,7 @@ export interface ContractSummary {
   title: string;
   template_name: string;
   template_version: string;
+  bundle_id: number | null;
   status: ContractStatus;
   creator_id: number;
   creator_name: string;
@@ -145,6 +147,54 @@ export interface Contract extends ContractSummary {
   creator_id: number;
   reviewer_name: string | null;
   events: ContractEvent[];
+  bundle: ContractBundle | null;
+}
+
+export interface ContractBundleMember {
+  id: number;
+  contract_no: string;
+  title: string;
+  template_name: string;
+  status: ContractStatus;
+  updated_at: string;
+}
+
+export interface ContractBundle {
+  id: number;
+  bundle_no: string;
+  creator_name: string;
+  department: string;
+  members: ContractBundleMember[];
+  all_approved: boolean;
+}
+
+export interface BundleRule {
+  id: number;
+  name: string;
+  trigger_department: string;
+  trigger_template_id: number;
+  trigger_template_name: string;
+  required_template_id: number;
+  required_template_name: string;
+  enabled: boolean;
+  updated_at: string;
+}
+
+export interface BundleRulePayload {
+  name: string;
+  trigger_department: string;
+  trigger_template_id: number;
+  required_template_id: number;
+  enabled: boolean;
+}
+
+export interface BundleRequirement {
+  rule_id: number;
+  rule_name: string;
+  id: number;
+  name: string;
+  category: string;
+  version: string;
 }
 
 export interface DashboardData {

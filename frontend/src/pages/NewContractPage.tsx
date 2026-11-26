@@ -12,7 +12,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../api";
 import { ContractComposer } from "../components/ContractComposer";
 import { PageHeader } from "../components/PageHeader";
-import type { ContractTableAdjustments, Template } from "../types";
+import type { BundleRequirement, ContractTableAdjustments, Template } from "../types";
 
 const CATEGORY_TONES: Record<string, string> = {
   采购类: "teal",
@@ -32,6 +32,7 @@ export function NewContractPage() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("全部");
+  const [bundleRequirements, setBundleRequirements] = useState<BundleRequirement[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -59,6 +60,24 @@ export function NewContractPage() {
   }, []);
 
   const selected = templates.find((item) => item.id === selectedId) || null;
+  useEffect(() => {
+    if (!selected) {
+      setBundleRequirements([]);
+      return;
+    }
+    let active = true;
+    api
+      .bundleRequirements(selected.id)
+      .then((result) => {
+        if (active) setBundleRequirements(result.items);
+      })
+      .catch(() => {
+        if (active) setBundleRequirements([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selected?.id]);
   const categories = useMemo(
     () => ["全部", ...Array.from(new Set(templates.map((template) => template.category)))],
     [templates],
@@ -108,7 +127,7 @@ export function NewContractPage() {
       });
       return draftId;
     }
-    const created = await api.createContract({
+    const created = await api.createContractBundle({
       template_id: selected.id,
       title,
       field_values: values,
@@ -159,6 +178,16 @@ export function NewContractPage() {
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/contracts")}>返回列表</Button>
           }
         />
+        {bundleRequirements.length > 0 && (
+          <Alert
+            type="warning"
+            showIcon
+            message="该模板需要同时签署配套合同"
+            description={`系统将自动生成配套合同草稿：${bundleRequirements
+              .map((item) => item.name)
+              .join("、")}。所有合同填写并审核通过后才可下载 PDF。`}
+          />
+        )}
         <ContractComposer
           template={selected}
           contractNo={contractNo || undefined}

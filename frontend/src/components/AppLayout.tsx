@@ -4,11 +4,13 @@ import {
   DashboardOutlined,
   FileProtectOutlined,
   FileTextOutlined,
+  LinkOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
+  TeamOutlined,
   UnorderedListOutlined,
 } from "@ant-design/icons";
 import { Avatar, Badge, Button, Dropdown, Layout, Menu, Popover, Tag } from "antd";
@@ -27,8 +29,10 @@ const { Header, Sider, Content } = Layout;
 const PAGE_NAMES: Record<string, string> = {
   "/dashboard": "工作台",
   "/contracts": "合同管理 / 合同列表",
+  "/parties": "合同管理 / 乙方主体信息",
   "/reviews": "合同管理 / 审核工作台",
   "/templates": "合同管理 / 合同模板",
+  "/bundle-rules": "合同管理 / 合同包规则",
   "/admin/permissions": "系统管理 / 权限管理",
 };
 
@@ -88,6 +92,13 @@ export function AppLayout() {
         label: "合同列表",
       });
     }
+    if (granted.has("parties")) {
+      contractChildren.push({
+        key: "/parties",
+        icon: <TeamOutlined />,
+        label: "乙方主体信息",
+      });
+    }
     if (granted.has("reviews")) {
       contractChildren.push({
         key: "/reviews",
@@ -100,6 +111,11 @@ export function AppLayout() {
         key: "/templates",
         icon: <FileProtectOutlined />,
         label: "合同模板",
+      });
+      contractChildren.push({
+        key: "/bundle-rules",
+        icon: <LinkOutlined />,
+        label: "合同包规则",
       });
     }
     if (contractChildren.length) {
@@ -132,7 +148,9 @@ export function AppLayout() {
     if (location.pathname.startsWith("/admin/permissions")) return "/admin/permissions";
     if (location.pathname.startsWith("/reviews")) return "/reviews";
     if (location.pathname.startsWith("/templates")) return "/templates";
+    if (location.pathname.startsWith("/bundle-rules")) return "/bundle-rules";
     if (location.pathname.startsWith("/contracts")) return "/contracts";
+    if (location.pathname.startsWith("/parties")) return "/parties";
     return "/dashboard";
   }, [location.pathname]);
 

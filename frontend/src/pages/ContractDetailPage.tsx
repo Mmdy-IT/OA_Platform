@@ -330,6 +330,37 @@ export function ContractDetailPage() {
         </div>
 
         <aside className="detail-sidebar">
+          {contract.bundle && (
+            <div className="panel bundle-panel">
+              <div className="bundle-panel-head">
+                <div>
+                  <span className="panel-eyebrow">CONTRACT BUNDLE</span>
+                  <h3>合同包 · {contract.bundle.bundle_no}</h3>
+                </div>
+                <Tag color={contract.bundle.all_approved ? "success" : "processing"} bordered={false}>
+                  {contract.bundle.all_approved ? "已全部通过" : "关联合同"}
+                </Tag>
+              </div>
+              <p>同包合同需要全部审核通过后才可下载 PDF。</p>
+              <div className="bundle-member-list">
+                {contract.bundle.members.map((member) => (
+                  <button
+                    type="button"
+                    className={`bundle-member ${member.id === contract.id ? "current" : ""}`}
+                    key={member.id}
+                    onClick={() => navigate(`/contracts/${member.id}`)}
+                  >
+                    <span>
+                      <strong>{member.title}</strong>
+                      <small>{member.contract_no} · {member.template_name}</small>
+                    </span>
+                    <StatusTag status={member.status} />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {canReview && (
             <div className="panel review-action-panel">
               <div className="review-action-head">

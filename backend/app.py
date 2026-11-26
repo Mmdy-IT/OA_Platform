@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import secrets
+import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote, unquote
@@ -32,7 +33,9 @@ from .richtext import (
 from .schemas import (
     ContractCreate,
     ContractUpdate,
+    BundleRulePayload,
     LoginRequest,
+    PartyCreate,
     PermissionUpdate,
     ReviewRequest,
     TemplatePayload,
@@ -200,6 +203,7 @@ def _contract_summary(row) -> dict:
         "title",
         "template_name",
         "template_version",
+        "bundle_id",
         "status",
         "creator_id",
         "creator_name",
@@ -221,6 +225,258 @@ def _event_dict(row) -> dict:
         "to_status": row["to_status"],
         "comment": row["comment"],
         "created_at": row["created_at"],
+    }
+
+
+def _bundle_members(conn, bundle_id: int) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT id, contract_no, title, template_name, status, updated_at
+          FROM contracts
+         WHERE bundle_id = ?
+         ORDER BY id ASC
+        """,
+        (bundle_id,),
+    ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "contract_no": row["contract_no"],
+            "title": row["title"],
+            "template_name": row["template_name"],
+            "status": row["status"],
+            "updated_at": row["updated_at"],
+        }
+        for row in rows
+    ]
+
+
+def _bundle_dict(conn, bundle_id: int) -> dict | None:
+    row = conn.execute(
+        "SELECT * FROM contract_bundles WHERE id = ?", (bundle_id,)
+    ).fetchone()
+    if not row:
+        return None
+    members = _bundle_members(conn, bundle_id)
+    return {
+        "id": row["id"],
+        "bundle_no": row["bundle_no"],
+        "creator_name": row["creator_name"],
+        "department": row["department"],
+        "members": members,
+        "all_approved": bool(members)
+        and all(item["status"] == "approved" for item in members),
+    }
+
+
+def _bundle_number(conn, now: str) -> str:
+    date_part = now[:10].replace("-", "")
+    prefix = f"BND{date_part}"
+    row = conn.execute(
+        "SELECT COUNT(*) AS total FROM contract_bundles WHERE bundle_no LIKE ?",
+        (f"{prefix}%",),
+    ).fetchone()
+    sequence = int(row["total"] or 0) + 1
+    while True:
+        candidate = f"{prefix}{sequence:04d}"
+        exists = conn.execute(
+            "SELECT 1 FROM contract_bundles WHERE bundle_no = ?", (candidate,)
+        ).fetchone()
+        if not exists:
+            return candidate
+        sequence += 1
+
+
+def _required_bundle_templates(conn, template_id: int, department: str) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT r.id AS rule_id, r.name AS rule_name, r.required_template_id,
+               t.name, t.category, t.version
+          FROM contract_bundle_rules r
+          JOIN templates t ON t.id = r.required_template_id
+         WHERE r.enabled = 1
+           AND r.trigger_template_id = ?
+           AND (r.trigger_department = '' OR r.trigger_department = ?)
+           AND t.status = 'active'
+         ORDER BY r.id ASC
+        """,
+        (template_id, department or ""),
+    ).fetchall()
+    unique: dict[int, dict] = {}
+    for row in rows:
+        unique.setdefault(
+            int(row["required_template_id"]),
+            {
+                "rule_id": row["rule_id"],
+                "rule_name": row["rule_name"],
+                "id": row["required_template_id"],
+                "name": row["name"],
+                "category": row["category"],
+                "version": row["version"],
+            },
+        )
+    return list(unique.values())
+
+
+def _insert_contract_record(
+    conn,
+    template_row,
+    *,
+    title: str,
+    field_values: dict,
+    table_adjustments: dict,
+    user: dict,
+    bundle_id: int | None = None,
+) -> int:
+    fields = _load_json(template_row["fields_json"], [])
+    values = normalize_field_values(field_values)
+    values = warehouse_db.resolve_warehouse_values(values, fields)
+    adjustments = normalize_table_adjustments(
+        template_row["content"], table_adjustments
+    )
+    adjustments = apply_table_row_auto_values(template_row["content"], adjustments)
+    values = apply_auto_amounts(template_row["content"], adjustments, fields, values)
+    values = _filter_values(values, fields)
+    now = utcnow()
+    contract_code = template_row["contract_code"] or DEFAULT_CONTRACT_CODE
+    try:
+        contract_no = next_contract_number(conn, contract_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    cursor = conn.execute(
+        """
+        INSERT INTO contracts(
+            contract_no, contract_code, template_id, template_name, template_version,
+            template_content, fields_schema_json, title, field_values_json,
+            table_adjustments_json, bundle_id,
+            status, creator_id, creator_name, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)
+        """,
+        (
+            contract_no,
+            contract_code,
+            template_row["id"],
+            template_row["name"],
+            template_row["version"],
+            template_row["content"],
+            template_row["fields_json"],
+            title.strip(),
+            json.dumps(values, ensure_ascii=False),
+            json.dumps(adjustments, ensure_ascii=False),
+            bundle_id,
+            user["id"],
+            user["display_name"],
+            now,
+            now,
+        ),
+    )
+    contract_id = cursor.lastrowid
+    _insert_event(conn, contract_id, "created", user, None, "draft", "创建合同草稿")
+    _sync_contract_archive(
+        oa_contract_id=contract_id,
+        contract_no=contract_no,
+        contract_code=contract_code,
+        contract_name=title.strip(),
+        contract_status="draft",
+        initiator_name=user["display_name"],
+        template_name=template_row["name"],
+        template_version=template_row["version"],
+    )
+    return contract_id
+
+
+def _submit_bundle(conn, row, user: dict) -> dict:
+    members = conn.execute(
+        "SELECT * FROM contracts WHERE bundle_id = ? ORDER BY id ASC",
+        (row["bundle_id"],),
+    ).fetchall()
+    if not members:
+        raise HTTPException(status_code=409, detail="合同包内没有合同")
+
+    for member in members:
+        if member["status"] in {"pending", "approved"}:
+            continue
+        fields = _load_json(member["fields_schema_json"], [])
+        values = _load_json(member["field_values_json"], {})
+        adjustments = _load_json(member["table_adjustments_json"], {})
+        adjustments = apply_table_row_auto_values(member["template_content"], adjustments)
+        values = warehouse_db.resolve_warehouse_values(values, fields)
+        values = apply_auto_amounts(member["template_content"], adjustments, fields, values)
+        missing = _missing_required(fields, values)
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": f"合同包内《{member['title']}》尚未填写完整",
+                    "fields": missing,
+                },
+            )
+
+    now = utcnow()
+    for member in members:
+        if member["status"] in {"pending", "approved"}:
+            continue
+        fields = _load_json(member["fields_schema_json"], [])
+        values = _load_json(member["field_values_json"], {})
+        adjustments = _load_json(member["table_adjustments_json"], {})
+        adjustments = apply_table_row_auto_values(member["template_content"], adjustments)
+        values = warehouse_db.resolve_warehouse_values(values, fields)
+        values = apply_auto_amounts(member["template_content"], adjustments, fields, values)
+        conn.execute(
+            """
+            UPDATE contracts
+               SET status = 'pending', submitted_at = ?, updated_at = ?,
+                   field_values_json = ?, table_adjustments_json = ?,
+                   reviewed_at = NULL, reviewer_id = NULL, reviewer_name = NULL,
+                   review_comment = ''
+             WHERE id = ?
+            """,
+            (
+                now,
+                now,
+                json.dumps(values, ensure_ascii=False),
+                json.dumps(adjustments, ensure_ascii=False),
+                member["id"],
+            ),
+        )
+        _insert_event(
+            conn,
+            member["id"],
+            "submitted",
+            user,
+            member["status"],
+            "pending",
+            "合同包提交法务审核",
+        )
+        _sync_contract_archive(
+            oa_contract_id=member["id"],
+            contract_no=member["contract_no"],
+            contract_code=member["contract_code"] or DEFAULT_CONTRACT_CODE,
+            contract_name=member["title"],
+            contract_status="pending",
+            initiator_name=member["creator_name"],
+            template_name=member["template_name"],
+            template_version=member["template_version"],
+        )
+
+    conn.execute(
+        "UPDATE contract_bundles SET updated_at = ? WHERE id = ?",
+        (now, row["bundle_id"]),
+    )
+    return _fetch_contract(conn, row["id"], user)
+
+
+def _bundle_rule_dict(row) -> dict:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "trigger_department": row["trigger_department"],
+        "trigger_template_id": row["trigger_template_id"],
+        "trigger_template_name": row["trigger_template_name"],
+        "required_template_id": row["required_template_id"],
+        "required_template_name": row["required_template_name"],
+        "enabled": bool(row["enabled"]),
+        "updated_at": row["updated_at"],
     }
 
 
@@ -250,6 +506,7 @@ def _contract_detail(conn, row) -> dict:
         (row["id"],),
     ).fetchall()
     data["events"] = [_event_dict(event) for event in events]
+    data["bundle"] = _bundle_dict(conn, row["bundle_id"]) if row["bundle_id"] else None
     return data
 
 
@@ -603,15 +860,35 @@ def notifications(user: dict = Depends(get_current_user)):
 
 
 @app.get("/api/parties")
-def parties(_user: dict = Depends(require_permission("contracts", "templates"))):
+def parties(
+    q: str = "",
+    party_type: str = "",
+    _user: dict = Depends(require_permission("parties", "contracts", "templates")),
+):
     try:
-        items = party_db.list_parties()
+        items = party_db.list_parties(query=q, party_type=party_type)
     except party_db.PartyDatabaseError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="主体信息库暂时不可用，请稍后重试或手动填写主体名称。",
         ) from None
     return {"items": items}
+
+
+@app.post("/api/parties", status_code=status.HTTP_201_CREATED)
+def create_party(
+    payload: PartyCreate,
+    _user: dict = Depends(require_permission("parties")),
+):
+    try:
+        return party_db.create_party(payload.model_dump())
+    except party_db.PartyConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except party_db.PartyDatabaseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="主体信息库暂时不可用，请稍后重试。",
+        ) from exc
 
 
 @app.get("/api/warehouses")
@@ -847,6 +1124,165 @@ def list_contracts(
     return {"items": [_contract_summary(row) for row in rows], "total": len(rows)}
 
 
+@app.get("/api/bundle-requirements")
+def bundle_requirements(
+    template_id: int,
+    user: dict = Depends(require_permission("contracts", "templates")),
+):
+    with db_cursor() as conn:
+        items = _required_bundle_templates(
+            conn, template_id, str(user.get("department") or "")
+        )
+    return {"items": items, "department": str(user.get("department") or "")}
+
+
+@app.get("/api/bundle-rules")
+def list_bundle_rules(_user: dict = Depends(require_permission("templates"))):
+    with db_cursor() as conn:
+        rows = conn.execute(
+            """
+            SELECT r.*, tt.name AS trigger_template_name,
+                   rt.name AS required_template_name
+              FROM contract_bundle_rules r
+              JOIN templates tt ON tt.id = r.trigger_template_id
+              JOIN templates rt ON rt.id = r.required_template_id
+             ORDER BY r.id DESC
+            """
+        ).fetchall()
+    return {"items": [_bundle_rule_dict(row) for row in rows]}
+
+
+@app.post("/api/bundle-rules", status_code=status.HTTP_201_CREATED)
+def create_bundle_rule(
+    payload: BundleRulePayload,
+    _user: dict = Depends(require_permission("templates")),
+):
+    data = payload.model_dump()
+    if data["trigger_template_id"] == data["required_template_id"]:
+        raise HTTPException(status_code=422, detail="触发模板和配套模板不能相同")
+    now = utcnow()
+    with db_cursor(commit=True) as conn:
+        templates = conn.execute(
+            "SELECT id, name FROM templates WHERE id IN (?, ?)",
+            (data["trigger_template_id"], data["required_template_id"]),
+        ).fetchall()
+        template_map = {int(row["id"]): str(row["name"]) for row in templates}
+        if len(template_map) != 2:
+            raise HTTPException(status_code=422, detail="模板不存在")
+        name = data["name"].strip() or (
+            f"{data['trigger_department']} · "
+            f"{template_map[data['trigger_template_id']]} → "
+            f"{template_map[data['required_template_id']]}"
+        )
+        try:
+            cursor = conn.execute(
+                """
+                INSERT INTO contract_bundle_rules(
+                    name, trigger_department, trigger_template_id,
+                    required_template_id, enabled, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    name,
+                    data["trigger_department"],
+                    data["trigger_template_id"],
+                    data["required_template_id"],
+                    1 if data["enabled"] else 0,
+                    now,
+                    now,
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="相同的合同包规则已存在") from exc
+        row = conn.execute(
+            """
+            SELECT r.*, tt.name AS trigger_template_name,
+                   rt.name AS required_template_name
+              FROM contract_bundle_rules r
+              JOIN templates tt ON tt.id = r.trigger_template_id
+              JOIN templates rt ON rt.id = r.required_template_id
+             WHERE r.id = ?
+            """,
+            (cursor.lastrowid,),
+        ).fetchone()
+    return _bundle_rule_dict(row)
+
+
+@app.put("/api/bundle-rules/{rule_id}")
+def update_bundle_rule(
+    rule_id: int,
+    payload: BundleRulePayload,
+    _user: dict = Depends(require_permission("templates")),
+):
+    data = payload.model_dump()
+    if data["trigger_template_id"] == data["required_template_id"]:
+        raise HTTPException(status_code=422, detail="触发模板和配套模板不能相同")
+    with db_cursor(commit=True) as conn:
+        existing = conn.execute(
+            "SELECT id FROM contract_bundle_rules WHERE id = ?", (rule_id,)
+        ).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="合同包规则不存在")
+        templates = conn.execute(
+            "SELECT id, name FROM templates WHERE id IN (?, ?)",
+            (data["trigger_template_id"], data["required_template_id"]),
+        ).fetchall()
+        template_map = {int(row["id"]): str(row["name"]) for row in templates}
+        if len(template_map) != 2:
+            raise HTTPException(status_code=422, detail="模板不存在")
+        try:
+            conn.execute(
+                """
+                UPDATE contract_bundle_rules
+                   SET name = ?, trigger_department = ?, trigger_template_id = ?,
+                       required_template_id = ?, enabled = ?, updated_at = ?
+                 WHERE id = ?
+                """,
+                (
+                    data["name"].strip()
+                    or (
+                        f"{data['trigger_department']} · "
+                        f"{template_map[data['trigger_template_id']]} → "
+                        f"{template_map[data['required_template_id']]}"
+                    ),
+                    data["trigger_department"],
+                    data["trigger_template_id"],
+                    data["required_template_id"],
+                    1 if data["enabled"] else 0,
+                    utcnow(),
+                    rule_id,
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="相同的合同包规则已存在") from exc
+        row = conn.execute(
+            """
+            SELECT r.*, tt.name AS trigger_template_name,
+                   rt.name AS required_template_name
+              FROM contract_bundle_rules r
+              JOIN templates tt ON tt.id = r.trigger_template_id
+              JOIN templates rt ON rt.id = r.required_template_id
+             WHERE r.id = ?
+            """,
+            (rule_id,),
+        ).fetchone()
+    return _bundle_rule_dict(row)
+
+
+@app.delete("/api/bundle-rules/{rule_id}")
+def delete_bundle_rule(
+    rule_id: int,
+    _user: dict = Depends(require_permission("templates")),
+):
+    with db_cursor(commit=True) as conn:
+        cursor = conn.execute(
+            "DELETE FROM contract_bundle_rules WHERE id = ?", (rule_id,)
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="合同包规则不存在")
+    return {"ok": True}
+
+
 @app.get("/api/contracts/{contract_id}")
 def get_contract(
     contract_id: int,
@@ -867,64 +1303,90 @@ def create_contract(
         ).fetchone()
         if not template_row:
             raise HTTPException(status_code=404, detail="合同模板不存在或已归档")
-        fields = _load_json(template_row["fields_json"], [])
-        values = normalize_field_values(payload.field_values)
-        values = warehouse_db.resolve_warehouse_values(values, fields)
-        table_adjustments = normalize_table_adjustments(
-            template_row["content"], payload.table_adjustments
-        )
-        table_adjustments = apply_table_row_auto_values(
-            template_row["content"], table_adjustments
-        )
-        values = apply_auto_amounts(
-            template_row["content"], table_adjustments, fields, values
-        )
-        values = _filter_values(values, fields)
-        now = utcnow()
-        contract_code = template_row["contract_code"] or DEFAULT_CONTRACT_CODE
-        try:
-            contract_no = next_contract_number(conn, contract_code)
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        cursor = conn.execute(
-            """
-            INSERT INTO contracts(
-                contract_no, contract_code, template_id, template_name, template_version,
-                template_content, fields_schema_json, title, field_values_json,
-                table_adjustments_json,
-                status, creator_id, creator_name, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)
-            """,
-            (
-                contract_no,
-                contract_code,
-                template_row["id"],
-                template_row["name"],
-                template_row["version"],
-                template_row["content"],
-                template_row["fields_json"],
-                payload.title.strip(),
-                json.dumps(values, ensure_ascii=False),
-                json.dumps(table_adjustments, ensure_ascii=False),
-                user["id"],
-                user["display_name"],
-                now,
-                now,
-            ),
-        )
-        contract_id = cursor.lastrowid
-        _insert_event(conn, contract_id, "created", user, None, "draft", "创建合同草稿")
-        _sync_contract_archive(
-            oa_contract_id=contract_id,
-            contract_no=contract_no,
-            contract_code=contract_code,
-            contract_name=payload.title.strip(),
-            contract_status="draft",
-            initiator_name=user["display_name"],
-            template_name=template_row["name"],
-            template_version=template_row["version"],
+        contract_id = _insert_contract_record(
+            conn,
+            template_row,
+            title=payload.title,
+            field_values=payload.field_values,
+            table_adjustments=payload.table_adjustments,
+            user=user,
         )
         return _fetch_contract(conn, contract_id, user)
+
+
+@app.post("/api/contracts/bundle", status_code=status.HTTP_201_CREATED)
+def create_contract_bundle(
+    payload: ContractCreate,
+    user: dict = Depends(require_permission("contracts")),
+):
+    with db_cursor(commit=True) as conn:
+        template_row = conn.execute(
+            "SELECT * FROM templates WHERE id = ? AND status = 'active'",
+            (payload.template_id,),
+        ).fetchone()
+        if not template_row:
+            raise HTTPException(status_code=404, detail="合同模板不存在或已归档")
+
+        required_templates = _required_bundle_templates(
+            conn, payload.template_id, str(user.get("department") or "")
+        )
+        bundle_id = None
+        if required_templates:
+            now = utcnow()
+            bundle_no = _bundle_number(conn, now)
+            cursor = conn.execute(
+                """
+                INSERT INTO contract_bundles(
+                    bundle_no, creator_id, creator_name, department, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    bundle_no,
+                    user["id"],
+                    user["display_name"],
+                    str(user.get("department") or ""),
+                    now,
+                    now,
+                ),
+            )
+            bundle_id = int(cursor.lastrowid)
+
+        primary_id = _insert_contract_record(
+            conn,
+            template_row,
+            title=payload.title,
+            field_values=payload.field_values,
+            table_adjustments=payload.table_adjustments,
+            user=user,
+            bundle_id=bundle_id,
+        )
+
+        if bundle_id is not None:
+            for required in required_templates:
+                required_row = conn.execute(
+                    "SELECT * FROM templates WHERE id = ? AND status = 'active'",
+                    (required["id"],),
+                ).fetchone()
+                if not required_row:
+                    continue
+                companion_title = (
+                    f"{payload.title.strip()} · {required_row['name']}"
+                )[:200]
+                _insert_contract_record(
+                    conn,
+                    required_row,
+                    title=companion_title,
+                    field_values=payload.field_values,
+                    table_adjustments={},
+                    user=user,
+                    bundle_id=bundle_id,
+                )
+            conn.execute(
+                "UPDATE contract_bundles SET updated_at = ? WHERE id = ?",
+                (utcnow(), bundle_id),
+            )
+
+        return _fetch_contract(conn, primary_id, user)
 
 
 @app.put("/api/contracts/{contract_id}")
@@ -1004,6 +1466,8 @@ def submit_contract(
             raise HTTPException(status_code=403, detail="仅合同发起人可以提交审核")
         if row["status"] not in {"draft", "rejected"}:
             raise HTTPException(status_code=409, detail="当前状态不可提交审核")
+        if row["bundle_id"]:
+            return _submit_bundle(conn, row, user)
         fields = _load_json(row["fields_schema_json"], [])
         values = _load_json(row["field_values_json"], {})
         adjustments = _load_json(row["table_adjustments_json"], {})
@@ -1153,6 +1617,11 @@ def delete_contract(
             raise HTTPException(status_code=403, detail="无权删除该合同")
         if row["status"] not in {"draft", "rejected"}:
             raise HTTPException(status_code=409, detail="仅草稿或已驳回的合同可以删除")
+        if row["bundle_id"]:
+            raise HTTPException(
+                status_code=409,
+                detail="合同包合同不能单独删除，请保持同包合同完整",
+            )
         conn.execute("DELETE FROM contracts WHERE id = ?", (contract_id,))
         try:
             contract_archive.delete_contract_record(oa_contract_id=contract_id)
@@ -1170,6 +1639,11 @@ def contract_pdf(
         contract = _fetch_contract(conn, contract_id, user)
     if contract["status"] != "approved":
         raise HTTPException(status_code=409, detail="法务审核通过后方可下载 PDF")
+    if contract.get("bundle") and not contract["bundle"]["all_approved"]:
+        raise HTTPException(
+            status_code=409,
+            detail="合同包内全部合同审核通过后方可下载 PDF",
+        )
     pdf_bytes = build_contract_pdf(contract)
     safe_title = re.sub(r'[\\/:*?"<>|]', "_", contract["title"]).strip(" .") or contract["contract_no"]
     headers = {

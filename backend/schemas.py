@@ -147,6 +147,22 @@ class ContractCreate(BaseModel):
         return validate_table_adjustments(value) or {}
 
 
+class BundleRulePayload(BaseModel):
+    name: str = Field(default="", max_length=120)
+    trigger_department: str = Field(min_length=1, max_length=100)
+    trigger_template_id: int
+    required_template_id: int
+    enabled: bool = True
+
+    @field_validator("trigger_department")
+    @classmethod
+    def strip_department(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("触发部门不能为空")
+        return value
+
+
 class ContractUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     field_values: dict[str, Any] | None = None
@@ -178,6 +194,32 @@ class PermissionUpdate(BaseModel):
     @classmethod
     def strip_union_id(cls, value: str) -> str:
         return value.strip()
+
+
+class PartyCreate(BaseModel):
+    entity_name: str = Field(min_length=1, max_length=255)
+    unified_social_credit_code: str = Field(min_length=1, max_length=64)
+    account_name: str = Field(min_length=1, max_length=255)
+    bank_name: str = Field(min_length=1, max_length=255)
+    bank_branch_code: str = Field(min_length=1, max_length=64)
+    tax_number: str = Field(min_length=1, max_length=64)
+    contact_address: str = Field(min_length=1, max_length=500)
+    contact_phone: str = Field(default="", max_length=100)
+
+    @model_validator(mode="after")
+    def validate_required_fields(self):
+        required = (
+            "entity_name",
+            "unified_social_credit_code",
+            "account_name",
+            "bank_name",
+            "bank_branch_code",
+            "tax_number",
+            "contact_address",
+        )
+        if any(not str(getattr(self, field) or "").strip() for field in required):
+            raise ValueError("除联系方式外，其余主体信息均为必填")
+        return self
 
 
 def normalize_field_values(values: dict[str, Any] | None) -> dict[str, str]:

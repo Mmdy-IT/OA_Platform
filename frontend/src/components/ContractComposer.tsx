@@ -31,7 +31,6 @@ import {
   type ContractTableModel,
 } from "../richtext";
 import {
-  PARTY_ATTRIBUTE_META,
   PARTY_SIDE_LABEL,
   isPartyAutoFillRole,
   isPartyNameRole,
@@ -215,7 +214,13 @@ export function ContractComposer({
   }, [hasPartyFields]);
 
   const partyByName = useMemo(
-    () => new Map(parties.map((party) => [party.entity_name, party])),
+    () =>
+      new Map(
+        parties.map((party) => [
+          `${party.party_type || "甲方"}|${party.entity_name}`,
+          party,
+        ]),
+      ),
     [parties],
   );
 
@@ -227,9 +232,11 @@ export function ContractComposer({
       for (const field of template.fields) {
         const role = resolveAutoFill(field);
         if (!role || !isPartyAutoFillRole(role) || !isPartyNameRole(role)) continue;
-        const party = partyByName.get(current[field.key] || "");
-        if (!party) continue;
         const side = roleSide(role);
+        const party = partyByName.get(
+          `${side === "party_a" ? "甲方" : "乙方"}|${current[field.key] || ""}`,
+        );
+        if (!party) continue;
         for (const other of template.fields) {
           const otherRole = resolveAutoFill(other);
           if (
@@ -436,7 +443,7 @@ export function ContractComposer({
 
   const removeTableRow = (model: ContractTableModel, position: number) => {
     const rows = rowsForTable(model);
-    if (rows.length <= 1) return;
+    if (!isNewContractTableRow(rows[position])) return;
     setRowsForTable(model, rows.filter((_, index) => index !== position));
   };
 
@@ -523,8 +530,10 @@ export function ContractComposer({
     role: PartyAutoFillRole,
     entityName: string,
   ) => {
-    const party = partyByName.get(entityName);
     const side = roleSide(role);
+    const party = partyByName.get(
+      `${side === "party_a" ? "甲方" : "乙方"}|${entityName}`,
+    );
     setValues((current) => {
       const next = { ...current, [field.key]: entityName };
       if (party) {
@@ -894,16 +903,20 @@ export function ContractComposer({
                                     {model.rowLabels[source as number] || "空白行"}
                                   </span>
                                 )}
-                                <Button
-                                  type="text"
-                                  danger
-                                  size="small"
-                                  icon={<DeleteOutlined />}
-                                  disabled={rows.length <= 1}
-                                  onClick={() => removeTableRow(model, position)}
-                                >
-                                  删除
-                                </Button>
+                                {isNew ? (
+                                  <Button
+                                    type="text"
+                                    danger
+                                    size="small"
+                                    icon={<DeleteOutlined />}
+                                    disabled={rows.length <= 1}
+                                    onClick={() => removeTableRow(model, position)}
+                                  >
+                                    删除
+                                  </Button>
+                                ) : (
+                                  <span className="contract-table-row-locked">模板行</span>
+                                )}
                               </div>
                             );
                           })}
@@ -1008,9 +1021,15 @@ function FieldControl({
   const partyNameRole = !!partyRole && isPartyNameRole(partyRole);
   const warehouseNameRole = autoRole === "warehouse_short_name";
   const warehouseAddressRole = autoRole === "warehouse_address";
-  const selectedParty = partyNameRole
-    ? parties.find((party) => party.entity_name === value)
-    : undefined;
+  const expectedPartyType =
+    partyRole && roleSide(partyRole as PartyAutoFillRole) === "party_a"
+      ? "甲方"
+      : partyRole
+        ? "乙方"
+        : "";
+  const partyOptions = expectedPartyType
+    ? parties.filter((party) => (party.party_type || "甲方") === expectedPartyType)
+    : parties;
   const warehouseLookup = value.trim();
   const selectedWarehouse = warehouseNameRole
     ? warehouses.find(
@@ -1021,7 +1040,8 @@ function FieldControl({
     : undefined;
   const warehouseSelectValue = selectedWarehouse?.warehouse_short_name;
   const dateValue = field.type === "date" ? normalizeDateValue(value) : "";
-  const canUsePartySelect = partyNameRole && !partyError && (partyLoading || parties.length > 0);
+  const canUsePartySelect =
+    partyNameRole && !partyError && (partyLoading || partyOptions.length > 0);
   const warehouseDirectoryAvailable =
     !warehouseError && (warehouseLoading || warehouses.length > 0);
   const canUseWarehouseSelect = warehouseNameRole && warehouseDirectoryAvailable;
@@ -1096,7 +1116,7 @@ function FieldControl({
             size="large"
             value={value || undefined}
             placeholder={field.placeholder || `请选择${field.label}`}
-            options={parties.map((party) => ({ label: party.entity_name, value: party.entity_name }))}
+            options={partyOptions.map((party) => ({ label: party.entity_name, value: party.entity_name }))}
             loading={partyLoading}
             onChange={onChange}
             status={error ? "error" : undefined}
@@ -1114,7 +1134,7 @@ function FieldControl({
                 ? "正在加载主体信息…"
                 : partyError
                   ? "主体信息库暂不可用，可手动填写主体名称"
-                  : "主体库暂无数据，请手动输入主体名称"
+                  : `${expectedPartyType || "主体"}库暂无数据，请手动输入主体名称`
             }
           />
         )
@@ -1188,21 +1208,6 @@ function FieldControl({
         />
       ) : (
         <Input id={`input-${field.key}`} size="large" maxLength={500} {...commonProps} />
-      )}
-      {partyNameRole && selectedParty && (
-        <div className="party-source-card">
-          <div className="party-source-card-head">
-            <CheckCircleFilled /> 已从主体库带出{PARTY_SIDE_LABEL[roleSide(partyRole as PartyAutoFillRole)]}信息
-          </div>
-          <div className="party-source-grid">
-            {PARTY_ATTRIBUTE_META.filter((meta) => meta.attribute !== "name").map((meta) => (
-              <div key={meta.attribute}>
-                <span>{meta.label}</span>
-                <strong>{String(selectedParty[meta.field] || "—")}</strong>
-              </div>
-            ))}
-          </div>
-        </div>
       )}
       {warehouseNameRole && selectedWarehouse && (
         <div className="party-source-card">
