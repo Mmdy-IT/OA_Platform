@@ -1,0 +1,5 @@
+INFO:     127.0.0.1:51076 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51076 - "GET /api/parties HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51076 - "GET /api/warehouses HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56350 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56350 - "GET /api/admin/permissions HTTP/1.1" 200 OK
