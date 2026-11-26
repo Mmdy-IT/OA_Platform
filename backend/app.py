@@ -21,6 +21,7 @@ from .contract_number import DEFAULT_CONTRACT_CODE, next_contract_number
 from .config import get_feishu_settings, password_login_enabled
 from .db import BASE_DIR, db_cursor, init_db, utcnow
 from .feishu import FeishuAuthError, get_feishu_client
+from .field_validation import invalid_field_summary, invalid_field_values
 from .importers import import_document
 from .pdf import build_contract_pdf
 from .richtext import (
@@ -337,6 +338,7 @@ def _insert_contract_record(
     adjustments = apply_table_row_auto_values(template_row["content"], adjustments)
     values = apply_auto_amounts(template_row["content"], adjustments, fields, values)
     values = _filter_values(values, fields)
+    _ensure_valid_field_values(fields, values)
     now = utcnow()
     contract_code = template_row["contract_code"] or DEFAULT_CONTRACT_CODE
     try:
@@ -402,6 +404,8 @@ def _submit_bundle(conn, row, user: dict) -> dict:
         adjustments = apply_table_row_auto_values(member["template_content"], adjustments)
         values = warehouse_db.resolve_warehouse_values(values, fields)
         values = apply_auto_amounts(member["template_content"], adjustments, fields, values)
+        values = _filter_values(values, fields)
+        _ensure_valid_field_values(fields, values)
         missing = _missing_required(fields, values)
         if missing:
             raise HTTPException(
@@ -547,6 +551,18 @@ def _fetch_contract(conn, contract_id: int, user: dict) -> dict:
 def _filter_values(values: dict[str, str], fields: list[dict]) -> dict[str, str]:
     allowed = {field["key"] for field in fields}
     return {key: value for key, value in values.items() if key in allowed}
+
+
+def _ensure_valid_field_values(fields: list[dict], values: dict[str, str]) -> None:
+    invalid = invalid_field_values(fields, values)
+    if invalid:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": invalid_field_summary(invalid),
+                "fields": [item["label"] for item in invalid],
+            },
+        )
 
 
 def _missing_required(fields: list[dict], values: dict[str, str]) -> list[str]:
@@ -1423,6 +1439,8 @@ def update_contract(
         current_values = apply_auto_amounts(
             row["template_content"], current_adjustments, fields, current_values
         )
+        current_values = _filter_values(current_values, fields)
+        _ensure_valid_field_values(fields, current_values)
         conn.execute(
             """
             UPDATE contracts
@@ -1476,6 +1494,8 @@ def submit_contract(
         values = apply_auto_amounts(
             row["template_content"], adjustments, fields, values
         )
+        values = _filter_values(values, fields)
+        _ensure_valid_field_values(fields, values)
         missing = _missing_required(fields, values)
         if missing:
             raise HTTPException(

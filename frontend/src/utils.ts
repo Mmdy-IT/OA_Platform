@@ -135,3 +135,104 @@ export function formatChineseDateValue(value: string): string {
   const [year, month, day] = normalized.split("-");
   return `${year}年${month}月${day}日`;
 }
+
+interface NumericInputOptions {
+  allowNegative?: boolean;
+  maxDecimals?: number;
+}
+
+export function numericInputOptions(field: TemplateField): NumericInputOptions {
+  if (field.type === "currency") {
+    return { allowNegative: false, maxDecimals: 2 };
+  }
+  return { allowNegative: true, maxDecimals: 6 };
+}
+
+export function sanitizeNumericInput(
+  raw: string,
+  { allowNegative = false, maxDecimals = 6 }: NumericInputOptions = {},
+): string {
+  let source = String(raw || "")
+    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace(/[－ー]/g, "-")
+    .replace(/＋/g, "+")
+    .replace(/．/g, ".")
+    .replace(/[\s\u00a0,，¥￥]/g, "");
+
+  let negative = false;
+  if (source.startsWith("-") || source.startsWith("+")) {
+    negative = allowNegative && source.startsWith("-");
+    source = source.slice(1);
+  }
+  source = source.replace(/[+-]/g, "");
+
+  const dotIndex = source.indexOf(".");
+  const hasDot = dotIndex >= 0;
+  const integerPart = (hasDot ? source.slice(0, dotIndex) : source).replace(/\D/g, "");
+  const decimalPart = (hasDot ? source.slice(dotIndex + 1) : "")
+    .replace(/\D/g, "")
+    .slice(0, Math.max(0, maxDecimals));
+
+  if (!integerPart && !decimalPart && !hasDot) {
+    return negative ? "-" : "";
+  }
+
+  return `${negative ? "-" : ""}${integerPart || "0"}${hasDot ? "." : ""}${decimalPart}`;
+}
+
+export function fieldValueProblem(field: TemplateField, value: string): string {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+
+  if (field.type === "currency" || field.type === "number") {
+    const compact = trimmed.replace(/[\s\u00a0,，¥￥]/g, "");
+    const pattern =
+      field.type === "currency"
+        ? /^\d+(?:\.\d{0,2})?$/
+        : /^[+-]?\d+(?:\.\d{0,6})?$/;
+    if (!pattern.test(compact) || !Number.isFinite(Number(compact))) {
+      return field.type === "currency"
+        ? "仅可填写数字金额，最多两位小数"
+        : "仅可填写数字，最多六位小数";
+    }
+    return "";
+  }
+
+  if (field.type === "date") {
+    const normalized = normalizeDateValue(trimmed);
+    if (!normalized || dayjs(normalized).format("YYYY-MM-DD") !== normalized) {
+      return "请选择有效日期";
+    }
+    return "";
+  }
+
+  if (field.type === "select") {
+    return (field.options || []).includes(trimmed) ? "" : "请从下拉选项中选择";
+  }
+
+  return "";
+}
+
+export function invalidFieldValues(
+  fields: TemplateField[],
+  values: Record<string, string>,
+): { field: TemplateField; message: string }[] {
+  const keys = new Set(fields.map((field) => field.key));
+  const uppercaseBaseExists = (key: string) => {
+    const candidates: string[] = [];
+    if (key.startsWith("大写") && key.length > 2) candidates.push(key.slice(2));
+    if (key.endsWith("大写") && key.length > 2) candidates.push(key.slice(0, -2));
+    return candidates.some((candidate) => keys.has(candidate));
+  };
+  return fields.flatMap((field) => {
+    if (
+      field.key === "预付款" ||
+      field.key === "尾款" ||
+      uppercaseBaseExists(field.key)
+    ) {
+      return [];
+    }
+    const message = fieldValueProblem(field, values[field.key] || "");
+    return message ? [{ field, message }] : [];
+  });
+}

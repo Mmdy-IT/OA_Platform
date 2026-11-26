@@ -54,7 +54,15 @@ import {
   uppercaseFieldBaseKey,
   type AutoAmountFieldKind,
 } from "../money";
-import { fieldTypeLabel, missingRequiredFields, normalizeDateValue } from "../utils";
+import {
+  fieldTypeLabel,
+  fieldValueProblem,
+  invalidFieldValues,
+  missingRequiredFields,
+  normalizeDateValue,
+  numericInputOptions,
+  sanitizeNumericInput,
+} from "../utils";
 import { ContractPaper } from "./ContractPaper";
 
 function newTableRowId(): string {
@@ -607,12 +615,18 @@ export function ContractComposer({
       applyPartySelection(field, role, value);
       return;
     }
-    updateValue(field.key, value);
+    const nextValue =
+      field.type === "number" || field.type === "currency"
+        ? sanitizeNumericInput(value, numericInputOptions(field))
+        : value;
+    updateValue(field.key, nextValue);
   };
 
   const validate = (forSubmit: boolean) => {
     const next = new Set<string>();
     if (!title.trim()) next.add("__title__");
+    const invalidFields = invalidFieldValues(template.fields, effectiveValues);
+    invalidFields.forEach((item) => next.add(item.field.key));
     const missingFields = forSubmit ? missingRequiredFields(template.fields, effectiveValues) : [];
     missingFields.forEach((field) => next.add(field.key));
     setErrors(next);
@@ -620,9 +634,13 @@ export function ContractComposer({
       message.error(
         next.has("__title__")
           ? "请填写合同名称"
+          : invalidFields.length
+            ? `${invalidFields[0].field.label}：${invalidFields[0].message}`
           : `还有 ${missingFields.length} 个必填项未完成，请补充后再提交`,
       );
-      const firstKey = next.has("__title__") ? "__title__" : missingFields[0]?.key;
+      const firstKey = next.has("__title__")
+        ? "__title__"
+        : invalidFields[0]?.field.key || missingFields[0]?.key;
       if (firstKey) {
         document.getElementById(`field-${firstKey}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
       }
@@ -1040,6 +1058,7 @@ function FieldControl({
     : undefined;
   const warehouseSelectValue = selectedWarehouse?.warehouse_short_name;
   const dateValue = field.type === "date" ? normalizeDateValue(value) : "";
+  const valueError = fieldValueProblem(field, value);
   const canUsePartySelect =
     partyNameRole && !partyError && (partyLoading || partyOptions.length > 0);
   const warehouseDirectoryAvailable =
@@ -1185,6 +1204,7 @@ function FieldControl({
           style={{ width: "100%" }}
           value={dateValue ? dayjs(dateValue) : null}
           format="YYYY年MM月DD日"
+          inputReadOnly
           placeholder={field.placeholder || `请选择${field.label}`}
           onChange={(date) => onChange(date ? date.format("YYYY-MM-DD") : "")}
           status={error ? "error" : undefined}
@@ -1197,14 +1217,18 @@ function FieldControl({
           prefix="¥"
           suffix="CNY"
           inputMode="decimal"
+          autoComplete="off"
           {...commonProps}
+          placeholder={field.placeholder || `请输入${field.label}（仅限数字）`}
         />
       ) : field.type === "number" ? (
         <Input
           id={`input-${field.key}`}
           size="large"
           inputMode="decimal"
+          autoComplete="off"
           {...commonProps}
+          placeholder={field.placeholder || `请输入${field.label}（仅限数字）`}
         />
       ) : (
         <Input id={`input-${field.key}`} size="large" maxLength={500} {...commonProps} />
@@ -1240,11 +1264,13 @@ function FieldControl({
         </div>
       ) : field.hint ? (
         <div className={`field-help ${error ? "error-help" : ""}`}>
-          {error ? "该项为必填内容，请完成填写。" : field.hint}
+          {error ? valueError || "该项为必填内容，请完成填写。" : field.hint}
         </div>
       ) : null}
       {error && !autoKind && !field.hint && (
-        <div className="field-help error-help">该项为必填内容，请完成填写。</div>
+        <div className="field-help error-help">
+          {valueError || "该项为必填内容，请完成填写。"}
+        </div>
       )}
     </div>
   );

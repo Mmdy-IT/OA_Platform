@@ -8,6 +8,18 @@ from backend.contract_number import contract_serial_number
 from backend.pdf import _contract_document_values, _format_field_values, render_contract_text
 
 
+def sample_field_value(field: dict) -> str:
+    if field["type"] == "date":
+        return "2026-12-31"
+    if field["type"] == "currency":
+        return "1000.00"
+    if field["type"] == "number":
+        return "10"
+    if field["type"] == "select":
+        return (field.get("options") or ["测试选项"])[0]
+    return "测试填写内容"
+
+
 def test_authentication_is_required(client):
     response = client.get("/api/dashboard")
     assert response.status_code == 401
@@ -27,10 +39,7 @@ def test_business_to_legal_contract_flow(client, login_as):
     forbidden = client.post("/api/templates", json={})
     assert forbidden.status_code == 403
 
-    values = {
-        field["key"]: ("2026-12-31" if field["type"] == "date" else "测试填写内容")
-        for field in template["fields"]
-    }
+    values = {field["key"]: sample_field_value(field) for field in template["fields"]}
     created = client.post(
         "/api/contracts",
         json={"template_id": template["id"], "title": "自动化测试合同", "field_values": values},
@@ -120,10 +129,7 @@ def test_contract_record_syncs_through_status_transitions(client, login_as, monk
     )
     login_as(client, "business", "Business@123")
     template = client.get("/api/templates").json()["items"][0]
-    values = {
-        field["key"]: ("2026-12-31" if field["type"] == "date" else "测试填写内容")
-        for field in template["fields"]
-    }
+    values = {field["key"]: sample_field_value(field) for field in template["fields"]}
     contract = client.post(
         "/api/contracts",
         json={
