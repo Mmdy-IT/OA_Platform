@@ -159,6 +159,12 @@ export function AdminPermissionsPage() {
       render: (value: string) => value || "-",
     },
     {
+      title: "岗位",
+      dataIndex: "job_title",
+      key: "job_title",
+      render: (value: string) => value || "-",
+    },
+    {
       title: "角色",
       dataIndex: "role",
       key: "role",

@@ -435,6 +435,8 @@ def feishu_callback(request: Request):
             union_id=union_id,
             display_name=str(profile.get("name") or "").strip(),
             department=str(profile.get("department_name") or "").strip(),
+            employee_no=str(profile.get("employee_no") or ""),
+            open_id=str(profile.get("open_id") or ""),
             auto_provision=bool(settings["auto_provision"]),
         )
     except user_permissions.FeishuProvisionError as exc:
@@ -513,6 +515,71 @@ def dashboard(user: dict = Depends(require_permission("dashboard"))):
         "recent_contracts": [_contract_summary(row) for row in recent],
         "pending_contracts": [_contract_summary(row) for row in pending],
     }
+
+
+@app.get("/api/notifications")
+def notifications(user: dict = Depends(get_current_user)):
+    can_review = "reviews" in set(user.get("permissions") or [])
+    items: list[dict] = []
+    with db_cursor() as conn:
+        if can_review:
+            rows = conn.execute(
+                """
+                SELECT id, title, contract_no, creator_name, status,
+                       submitted_at, updated_at
+                  FROM contracts
+                 WHERE status = 'pending' AND creator_id != ?
+                 ORDER BY COALESCE(submitted_at, updated_at) DESC
+                 LIMIT 20
+                """,
+                (user["id"],),
+            ).fetchall()
+            for row in rows:
+                items.append(
+                    {
+                        "id": f"review-{row['id']}",
+                        "kind": "review",
+                        "title": "待审核合同",
+                        "description": f"{row['title']} · 发起人 {row['creator_name']}",
+                        "contract_id": row["id"],
+                        "contract_no": row["contract_no"],
+                        "status": row["status"],
+                        "created_at": row["submitted_at"] or row["updated_at"],
+                    }
+                )
+
+        rows = conn.execute(
+            """
+            SELECT id, title, contract_no, status, review_comment, updated_at
+              FROM contracts
+             WHERE creator_id = ? AND status IN ('rejected', 'approved')
+             ORDER BY updated_at DESC
+             LIMIT 20
+            """,
+            (user["id"],),
+        ).fetchall()
+        for row in rows:
+            rejected = row["status"] == "rejected"
+            items.append(
+                {
+                    "id": f"status-{row['id']}",
+                    "kind": "rejected" if rejected else "approved",
+                    "title": "合同被驳回" if rejected else "合同审核通过",
+                    "description": (
+                        f"{row['title']} · {row['review_comment'] or '请查看审核意见'}"
+                        if rejected
+                        else f"{row['title']} · 可下载正式 PDF"
+                    ),
+                    "contract_id": row["id"],
+                    "contract_no": row["contract_no"],
+                    "status": row["status"],
+                    "created_at": row["updated_at"],
+                }
+            )
+
+    items.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+    items = items[:20]
+    return {"items": items, "unread_count": len(items)}
 
 
 @app.get("/api/parties")

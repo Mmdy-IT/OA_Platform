@@ -5,6 +5,7 @@ import type {
   ContractSummary,
   DashboardData,
   ListResponse,
+  NotificationItem,
   PartyInfo,
   PermissionKey,
   PermissionModule,
@@ -79,6 +80,8 @@ export const api = {
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
   me: () => request<{ user: User }>("/auth/me"),
   dashboard: () => request<DashboardData>("/dashboard"),
+  notifications: () =>
+    request<{ items: NotificationItem[]; unread_count: number }>("/notifications"),
   parties: () => request<{ items: PartyInfo[] }>("/parties"),
   warehouses: () => request<{ items: WarehouseInfo[] }>("/warehouses"),
 

@@ -7,6 +7,7 @@ export interface User {
   display_name: string;
   role: Role;
   department: string;
+  job_title: string;
   permissions: PermissionKey[];
 }
 
@@ -158,6 +159,19 @@ export interface DashboardData {
   };
   recent_contracts: ContractSummary[];
   pending_contracts: ContractSummary[];
+}
+
+export type NotificationKind = "review" | "rejected" | "approved";
+
+export interface NotificationItem {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  description: string;
+  contract_id: number;
+  contract_no: string;
+  status: ContractStatus;
+  created_at: string;
 }
 
 export interface ListResponse<T> {

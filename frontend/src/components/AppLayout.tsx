@@ -11,14 +11,16 @@ import {
   SettingOutlined,
   UnorderedListOutlined,
 } from "@ant-design/icons";
-import { Avatar, Badge, Button, Dropdown, Layout, Menu, Tag, Tooltip } from "antd";
+import { Avatar, Badge, Button, Dropdown, Layout, Menu, Popover, Tag } from "antd";
 import type { MenuProps } from "antd";
 import dayjs from "dayjs";
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import brandLogo from "../assets/brand-logo-transparent.png";
+import { api } from "../api";
 import { useAuth } from "../auth";
-import { initials, ROLE_META } from "../utils";
+import type { NotificationItem } from "../types";
+import { formatDateTime, initials, ROLE_META } from "../utils";
 
 const { Header, Sider, Content } = Layout;
 
@@ -35,9 +37,31 @@ export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationOpen, setNotificationOpen] = useState(false);
 
   useEffect(() => {
     if (window.innerWidth < 992) setCollapsed(true);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const load = () => {
+      api
+        .notifications()
+        .then((result) => {
+          if (active) setNotifications(result.items);
+        })
+        .catch(() => {
+          if (active) setNotifications([]);
+        });
+    };
+    void load();
+    const timer = window.setInterval(load, 60000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
   const currentPage = useMemo(() => {
@@ -119,6 +143,46 @@ export function AppLayout() {
     navigate("/login", { replace: true });
   };
 
+  const refreshNotifications = () => {
+    api
+      .notifications()
+      .then((result) => setNotifications(result.items))
+      .catch(() => undefined);
+  };
+
+  const notificationPanel = (
+    <div className="notifications-panel">
+      <div className="notifications-head">
+        <strong>消息通知</strong>
+        <span>{notifications.length} 条</span>
+      </div>
+      {notifications.length ? (
+        <div className="notification-list">
+          {notifications.map((item) => (
+            <button
+              type="button"
+              className="notification-item"
+              key={item.id}
+              onClick={() => {
+                setNotificationOpen(false);
+                navigate(`/contracts/${item.contract_id}`);
+              }}
+            >
+              <span className={`notification-dot notification-${item.kind}`} />
+              <span className="notification-copy">
+                <strong>{item.title}</strong>
+                <span>{item.description}</span>
+                <small>{formatDateTime(item.created_at)}</small>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="notifications-empty">暂无新消息</div>
+      )}
+    </div>
+  );
+
   return (
     <Layout className="app-layout">
       <Sider
@@ -176,11 +240,21 @@ export function AppLayout() {
           <div className="topbar-right">
             <div className="topbar-date">{dayjs().format("YYYY年M月D日")}</div>
             <Tag className="phase-tag">内部系统</Tag>
-            <Tooltip title="一期功能：合同模板、合同起草、法务审核与 PDF 下载">
-              <Badge dot color="#5A6A46" offset={[-2, 4]}>
+            <Popover
+              trigger="click"
+              placement="bottomRight"
+              open={notificationOpen}
+              onOpenChange={(open) => {
+                setNotificationOpen(open);
+                if (open) refreshNotifications();
+              }}
+              content={notificationPanel}
+              classNames={{ root: "notifications-popover" }}
+            >
+              <Badge count={notifications.length} size="small" offset={[-2, 4]}>
                 <Button type="text" shape="circle" icon={<BellOutlined />} className="topbar-icon" />
               </Badge>
-            </Tooltip>
+            </Popover>
             <Dropdown
               trigger={["click"]}
               menu={{
@@ -206,7 +280,7 @@ export function AppLayout() {
               }}
             >
               <button type="button" className="topbar-user">
-                <Avatar size={34} className={`user-avatar role-${user?.role}`}>
+                <Avatar size={38} className={`user-avatar role-${user?.role}`}>
                   {initials(user?.display_name)}
                 </Avatar>
                 <span>{role?.label}</span>

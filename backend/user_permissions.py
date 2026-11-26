@@ -100,6 +100,12 @@ def _full_table() -> str:
     return f"{_identifier(database, '人员权限数据库')}.{_identifier(table, '人员权限数据表')}"
 
 
+def _employee_table() -> str:
+    database = get_database_name()
+    table = get_table_name("employee", "OA_EMPLOYEE_TABLE", "mmdy_employee_info")
+    return f"{_identifier(database, '员工数据库')}.{_identifier(table, '员工数据表')}"
+
+
 def _connect():
     return pymysql.connect(**connection_config())
 
@@ -119,6 +125,7 @@ def _ensure_table(cursor) -> None:
           `display_name` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '人员姓名',
           `role` VARCHAR(20) NOT NULL DEFAULT 'business' COMMENT '系统角色：admin/legal/business',
           `department` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '所属部门',
+          `job_title` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '岗位',
           `permissions_json` TEXT NOT NULL COMMENT '已开通的子模块权限 JSON 数组',
           `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -129,6 +136,14 @@ def _ensure_table(cursor) -> None:
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='OA 人员子模块权限表'
         """
     )
+    cursor.execute(f"SHOW COLUMNS FROM {table}")
+    columns = {str(row.get("Field") or "") for row in cursor.fetchall()}
+    if "job_title" not in columns:
+        cursor.execute(
+            f"ALTER TABLE {table} "
+            "ADD COLUMN `job_title` VARCHAR(100) NOT NULL DEFAULT '' "
+            "COMMENT '岗位' AFTER `department`"
+        )
     _TABLE_READY = True
 
 
@@ -196,6 +211,7 @@ def _row_to_record(row: dict) -> dict:
         "display_name": str(row.get("display_name") or ""),
         "role": role,
         "department": str(row.get("department") or ""),
+        "job_title": str(row.get("job_title") or ""),
         "permissions": list(_load_permissions_json(row.get("permissions_json"), role)),
         "updated_at": updated_at or "",
     }
@@ -206,7 +222,7 @@ def _select_by_union_id(cursor, union_id: str) -> dict | None:
     cursor.execute(
         f"""
         SELECT `id`, `oa_user_id`, `union_id`, `username`, `display_name`,
-               `role`, `department`, `permissions_json`, `updated_at`
+               `role`, `department`, `job_title`, `permissions_json`, `updated_at`
           FROM {table}
          WHERE `union_id` = %s
          LIMIT 1
@@ -215,6 +231,40 @@ def _select_by_union_id(cursor, union_id: str) -> dict | None:
     )
     row = cursor.fetchone()
     return dict(row) if row else None
+
+
+def _fetch_employee_info(
+    cursor,
+    union_id: str,
+    employee_no: str,
+    open_id: str,
+) -> dict:
+    table = _employee_table()
+    queries = [
+        ("`union_id` = %s", union_id),
+        ("`employee_no` = %s", employee_no),
+        ("`open_id` = %s", open_id),
+    ]
+    for clause, value in queries:
+        if not value:
+            continue
+        try:
+            cursor.execute(
+                f"""
+                SELECT `union_id`, `open_id`, `employee_no`, `name`,
+                       `job_title`, `dept_path`
+                  FROM {table}
+                 WHERE {clause}
+                 LIMIT 1
+                """,
+                (value,),
+            )
+            row = cursor.fetchone()
+        except pymysql.MySQLError:
+            return {}
+        if row:
+            return dict(row)
+    return {}
 
 
 def _local_user_by_id(user_id: int | None) -> dict | None:
@@ -285,6 +335,8 @@ def ensure_feishu_user(
     union_id: str,
     display_name: str,
     department: str = "",
+    employee_no: str = "",
+    open_id: str = "",
     auto_provision: bool = True,
 ) -> dict:
     """Resolve a Feishu union_id to an OA user, creating an ordinary account if needed."""
@@ -301,6 +353,14 @@ def ensure_feishu_user(
         with connection.cursor() as cursor:
             _ensure_table(cursor)
             record = _select_by_union_id(cursor, union_value)
+            employee = _fetch_employee_info(
+                cursor,
+                union_value,
+                (employee_no or "").strip(),
+                (open_id or "").strip(),
+            )
+            employee_department = str(employee.get("dept_path") or "").strip()
+            employee_job_title = str(employee.get("job_title") or "").strip()
 
             local_user = None
             if record:
@@ -325,7 +385,7 @@ def ensure_feishu_user(
                     department=(
                         str(record.get("department") or "").strip()
                         if record
-                        else department
+                        else employee_department or department
                     ),
                 )
 
@@ -337,7 +397,8 @@ def ensure_feishu_user(
                            `username` = %s,
                            `display_name` = %s,
                            `role` = %s,
-                           `department` = %s
+                           `department` = %s,
+                           `job_title` = %s
                      WHERE `id` = %s
                     """,
                     (
@@ -346,6 +407,8 @@ def ensure_feishu_user(
                         local_user["display_name"],
                         local_user["role"],
                         local_user["department"],
+                        str(record.get("job_title") or "").strip()
+                        or employee_job_title,
                         record["id"],
                     ),
                 )
@@ -354,8 +417,8 @@ def ensure_feishu_user(
                     f"""
                     INSERT INTO {table} (
                         `oa_user_id`, `union_id`, `username`, `display_name`,
-                        `role`, `department`, `permissions_json`
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        `role`, `department`, `job_title`, `permissions_json`
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         local_user["id"],
@@ -363,7 +426,8 @@ def ensure_feishu_user(
                         local_user["username"],
                         local_user["display_name"],
                         local_user["role"],
-                        local_user["department"],
+                        employee_department or local_user["department"],
+                        employee_job_title,
                         json.dumps(new_user_permissions(), ensure_ascii=False),
                     ),
                 )
@@ -384,7 +448,7 @@ def _select_record(cursor, record_id: int) -> dict | None:
     cursor.execute(
         f"""
         SELECT `id`, `oa_user_id`, `union_id`, `username`, `display_name`,
-               `role`, `department`, `permissions_json`, `updated_at`
+               `role`, `department`, `job_title`, `permissions_json`, `updated_at`
           FROM {table}
          WHERE `id` = %s
         """,
@@ -404,7 +468,7 @@ def list_user_permissions() -> list[dict]:
             cursor.execute(
                 f"""
                 SELECT `id`, `oa_user_id`, `union_id`, `username`, `display_name`,
-                       `role`, `department`, `permissions_json`, `updated_at`
+                       `role`, `department`, `job_title`, `permissions_json`, `updated_at`
                   FROM {table}
                  ORDER BY FIELD(`role`, 'admin', 'legal', 'business'), `display_name` ASC, `id` ASC
                 """

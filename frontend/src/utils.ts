@@ -85,8 +85,8 @@ export function formatRelative(value?: string | null): string {
 
 export function initials(name?: string): string {
   if (!name) return "OA";
-  const clean = name.replace(/·/g, "").trim();
-  return clean.slice(0, 2) || "OA";
+  const clean = name.split("·")[0].trim();
+  return clean.slice(0, 3) || "OA";
 }
 
 export function missingRequiredFields(
