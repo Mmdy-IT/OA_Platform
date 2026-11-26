@@ -1053,6 +1053,13 @@ code {
   letter-spacing: -0.06em;
 }
 
+.topbar-user > span:last-child {
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .topbar-user:hover {
   border-color: #e4eaf2;
   background: #fff;

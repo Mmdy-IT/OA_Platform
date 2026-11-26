@@ -55,6 +55,56 @@ export const AUTO_FILL_OPTIONS = [
   },
 ];
 
+const SYSTEM_PARTY_FIELD_KEYS: Record<PartySide, Record<PartyAttribute, string>> = {
+  party_a: {
+    name: "甲方",
+    credit_code: "甲方信用代码",
+    account_name: "甲方户名",
+    bank_name: "甲方开户行",
+    bank_branch_code: "甲方行号",
+    tax_number: "甲方税号",
+    contact_address: "甲方地址",
+    contact_phone: "甲方联系人",
+  },
+  party_b: {
+    name: "乙方",
+    credit_code: "乙方信用代码",
+    account_name: "乙方户名",
+    bank_name: "乙方开户行",
+    bank_branch_code: "乙方行号",
+    tax_number: "乙方税号",
+    contact_address: "乙方地址",
+    contact_phone: "乙方联系人",
+  },
+};
+
+export const SYSTEM_PARTY_FIELDS: Array<{
+  side: PartySide;
+  attribute: PartyAttribute;
+  role: PartyAutoFillRole;
+  key: string;
+  label: string;
+  required: boolean;
+  hint: string;
+}> = (["party_a", "party_b"] as PartySide[]).flatMap((side) =>
+  PARTY_ATTRIBUTE_META.map((item) => {
+    const sideLabel = PARTY_SIDE_LABEL[side];
+    const role = `${side}_${item.attribute}` as PartyAutoFillRole;
+    return {
+      side,
+      attribute: item.attribute,
+      role,
+      key: SYSTEM_PARTY_FIELD_KEYS[side][item.attribute],
+      label: item.attribute === "name" ? `${sideLabel}名称` : `${sideLabel}${item.label}`,
+      required: item.attribute === "name",
+      hint:
+        item.attribute === "name"
+          ? `从${sideLabel}主体库选择主体，系统会自动带出其余${sideLabel}信息。`
+          : `选择${sideLabel}主体后自动带出${item.label}，无需重复填写。`,
+    };
+  }),
+);
+
 const PARTY_ROLES = new Set<string>(
   (["party_a", "party_b"] as PartySide[]).flatMap((side) =>
     PARTY_ATTRIBUTE_META.map((item) => `${side}_${item.attribute}`),
@@ -159,4 +209,47 @@ export function normalizeAutoFill(field: TemplateField): AutoFillRole | "" {
     return resolved;
   }
   return isAutoFillRole(field.auto_fill) ? field.auto_fill : "";
+}
+
+export function isSystemPartyField(field: TemplateField): boolean {
+  return isPartyAutoFillRole(resolveAutoFill(field));
+}
+
+export function ensureSystemPartyFields(fields: TemplateField[]): TemplateField[] {
+  const existingKeys = new Set(fields.map((field) => field.key));
+  const result = fields.map((field) => {
+    const role = resolveAutoFill(field);
+    if (isPartyAutoFillRole(role) && field.auto_fill !== role) {
+      return { ...field, auto_fill: role };
+    }
+    return field;
+  });
+  const existingRoles = new Set(
+    result
+      .map((field) => resolveAutoFill(field))
+      .filter((role): role is PartyAutoFillRole => isPartyAutoFillRole(role)),
+  );
+
+  for (const definition of SYSTEM_PARTY_FIELDS) {
+    if (existingRoles.has(definition.role)) continue;
+    let key = definition.key;
+    let suffix = 2;
+    while (existingKeys.has(key)) {
+      key = `${definition.key}${suffix}`;
+      suffix += 1;
+    }
+    existingKeys.add(key);
+    existingRoles.add(definition.role);
+    result.push({
+      key,
+      label: definition.label,
+      type: "text",
+      required: definition.required,
+      hint: definition.hint,
+      placeholder: "",
+      options: [],
+      auto_fill: definition.role,
+    });
+  }
+  return result;
 }

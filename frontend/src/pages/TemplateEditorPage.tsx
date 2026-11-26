@@ -43,7 +43,13 @@ import {
   isAutoPlaceholderKey,
   isSystemPlaceholderKey,
 } from "../richtext";
-import { AUTO_FILL_OPTIONS, normalizeAutoFill, resolveAutoFill } from "../party";
+import {
+  AUTO_FILL_OPTIONS,
+  ensureSystemPartyFields,
+  isSystemPartyField,
+  normalizeAutoFill,
+  resolveAutoFill,
+} from "../party";
 import type {
   TemplateField,
   TemplateFieldType,
@@ -118,7 +124,7 @@ export function TemplateEditorPage() {
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
   const [content, setContent] = useState("");
-  const [fields, setFields] = useState<TemplateField[]>([]);
+  const [fields, setFields] = useState<TemplateField[]>(() => ensureSystemPartyFields([]));
   const [importSource, setImportSource] = useState<TemplateImportDraft["source"] | null>(
     importDraft?.source ?? null,
   );
@@ -131,7 +137,7 @@ export function TemplateEditorPage() {
     setDescription(importDraft.description || "");
     setInstructions(importDraft.instructions || "");
     setContent(importDraft.content);
-    setFields(importDraft.fields);
+    setFields(ensureSystemPartyFields(importDraft.fields));
     setImportSource(importDraft.source);
   }, [isEdit, importDraft]);
 
@@ -149,7 +155,7 @@ export function TemplateEditorPage() {
         setDescription(template.description);
         setInstructions(template.instructions);
         setContent(template.content);
-        setFields(template.fields);
+        setFields(ensureSystemPartyFields(template.fields));
         setTemplateStatus(template.status);
       })
       .catch((caught) => {
@@ -171,7 +177,9 @@ export function TemplateEditorPage() {
       !isAutoPlaceholderKey(key) &&
       !fieldKeys.includes(key),
   );
-  const unusedFields = fields.filter((field) => !placeholderKeys.includes(field.key));
+  const unusedFields = fields.filter(
+    (field) => !isSystemPartyField(field) && !placeholderKeys.includes(field.key),
+  );
   const duplicateKeys = fieldKeys.filter((key, index) => key && fieldKeys.indexOf(key) !== index);
   const invalidKeys = fields.filter((field) => !FIELD_KEY_RE.test(field.key)).map((field) => field.label || field.key);
   const reservedFields = fields.filter((field) => isSystemPlaceholderKey(field.key));
@@ -193,7 +201,7 @@ export function TemplateEditorPage() {
   };
 
   const addField = () => {
-    let suffix = fields.length + 1;
+    let suffix = fields.filter((field) => !isSystemPartyField(field)).length + 1;
     let label = `空白项${suffix}`;
     while (fields.some((field) => field.key === label || field.label === label)) {
       suffix += 1;
@@ -213,6 +221,10 @@ export function TemplateEditorPage() {
   };
 
   const removeField = (index: number) => {
+    if (isSystemPartyField(fields[index])) {
+      message.warning("系统生成的主体空白项不可删除");
+      return;
+    }
     setFields((current) => current.filter((_, fieldIndex) => fieldIndex !== index));
     setActiveFields([]);
   };
@@ -234,12 +246,15 @@ export function TemplateEditorPage() {
   const insertPlaceholder = (field: TemplateField) => insertToken(field.key);
 
   const loadSkeleton = () => {
-    if (hasRichContent(content) || fields.length) {
+    if (
+      hasRichContent(content) ||
+      fields.some((field) => !isSystemPartyField(field))
+    ) {
       message.info("当前已有模板内容，基础骨架仅用于空白模板。");
       return;
     }
     setContent(SKELETON_CONTENT);
-    setFields(SKELETON_FIELDS);
+    setFields(ensureSystemPartyFields(SKELETON_FIELDS));
     setCategory((current) => (current === "通用" ? "服务类" : current));
     message.success("已载入基础合同骨架，请按需调整");
   };
@@ -288,7 +303,7 @@ export function TemplateEditorPage() {
       description: description.trim(),
       instructions: instructions.trim(),
       content,
-      fields: fields.map((field) => ({
+      fields: ensureSystemPartyFields(fields).map((field) => ({
         ...field,
         key: field.key.trim(),
         label: field.label.trim(),
@@ -514,7 +529,9 @@ export function TemplateEditorPage() {
               <div><span className="panel-eyebrow">BLANK FIELDS</span><h3>空白项配置</h3></div>
               <Button type="primary" ghost size="small" icon={<PlusOutlined />} onClick={addField}>添加空白项</Button>
             </div>
-            <p className="fields-config-help">每个空白项对应业务表单中的一个输入控件，并可单独设置填写要求。</p>
+            <p className="fields-config-help">
+              每个空白项对应业务表单中的一个输入控件，并可单独设置填写要求。甲方、乙方主体信息由系统自动生成，选择主体名称后会带出信用代码、地址、联系人等信息。
+            </p>
 
             {fields.length ? (
               <Collapse
@@ -529,11 +546,13 @@ export function TemplateEditorPage() {
                       <strong>{field.label || "未命名空白项"}</strong>
                       <code>{'{{'}{field.key}{'}}'}</code>
                       {field.required && <Tag color="red" bordered={false}>必填</Tag>}
-                      {resolveAutoFill(field) && (
+                      {isSystemPartyField(field) ? (
+                        <Tag color="gold" bordered={false}>系统生成</Tag>
+                      ) : resolveAutoFill(field) ? (
                         <Tag color="blue" bordered={false}>
                           {resolveAutoFill(field).startsWith("warehouse_") ? "仓库" : "主体库"}
                         </Tag>
-                      )}
+                      ) : null}
                       <span className="field-type-mini">{fieldTypeLabel(field.type)}</span>
                     </div>
                   ),
@@ -610,12 +629,19 @@ function FieldConfig({
   onRemove: () => void;
 }) {
   const autoFillRole = resolveAutoFill(field);
+  const systemField = isSystemPartyField(field);
   return (
     <div className="field-config-body">
       <div className="field-config-grid">
         <div className="composer-field">
           <label>显示名称 <em>*</em></label>
-          <Input value={field.label} onChange={(event) => onChange({ label: event.target.value })} placeholder="例如：甲方名称" maxLength={80} />
+          <Input
+            value={field.label}
+            onChange={(event) => onChange({ label: event.target.value })}
+            placeholder="例如：甲方名称"
+            maxLength={80}
+            disabled={systemField}
+          />
         </div>
         <div className="composer-field">
           <label>字段标识 <em>*</em></label>
@@ -627,8 +653,13 @@ function FieldConfig({
             className="code-input"
             addonBefore="{{"
             addonAfter="}}"
+            disabled={systemField}
           />
-          <span className="field-help-inline">新增空白项时自动取显示名称；支持中文，业务人员看到的就是这个名称。</span>
+          <span className="field-help-inline">
+            {systemField
+              ? "系统生成的主体字段，字段标识固定，便于正文占位符稳定引用。"
+              : "新增空白项时自动取显示名称；支持中文，业务人员看到的就是这个名称。"}
+          </span>
         </div>
         <div className="composer-field">
           <label>输入类型</label>
@@ -636,7 +667,7 @@ function FieldConfig({
             value={field.type}
             options={FIELD_TYPE_OPTIONS}
             onChange={(value: TemplateFieldType) => onChange({ type: value })}
-            disabled={!!autoFillRole}
+            disabled={!!autoFillRole || systemField}
           />
         </div>
         <div className="composer-field">
@@ -645,9 +676,12 @@ function FieldConfig({
             value={autoFillRole}
             options={AUTO_FILL_OPTIONS}
             onChange={(value: TemplateField["auto_fill"]) => onChange({ auto_fill: value || "" })}
+            disabled={systemField}
           />
           <span className="field-help-inline">
-            选择「主体名称（下拉选择）」可从 mmdy_party_info 选择主体并带出同侧信息；选择「仓库简称（下拉选择并填充地址）」可从 mmdy_warehouse_info 选择仓库，正文填充该仓库的完整地址。
+            {systemField
+              ? "由系统从主体库自动生成。选择甲方/乙方主体名称后，同侧信用代码、地址、联系人等信息会自动带出。"
+              : "选择「主体名称（下拉选择）」可从 mmdy_party_info 选择主体并带出同侧信息；选择「仓库简称（下拉选择并填充地址）」可从 mmdy_warehouse_info 选择仓库，正文填充该仓库的完整地址。"}
           </span>
         </div>
         <div className="composer-field required-switch-field">
@@ -693,7 +727,9 @@ function FieldConfig({
       </div>
       <div className="field-config-actions">
         <Button type="link" icon={<CodeOutlined />} onClick={onInsert}>插入到正文</Button>
-        <Button type="link" danger icon={<DeleteOutlined />} onClick={onRemove}>删除此项</Button>
+        {!systemField && (
+          <Button type="link" danger icon={<DeleteOutlined />} onClick={onRemove}>删除此项</Button>
+        )}
       </div>
     </div>
   );

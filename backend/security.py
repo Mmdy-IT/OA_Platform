@@ -110,6 +110,7 @@ def get_current_user(request: Request) -> dict:
             "role": profile["role"],
             "department": profile["department"],
             "job_title": profile["job_title"],
+            "avatar_url": profile.get("avatar_url", ""),
             "permissions": profile["permissions"],
         }
     )

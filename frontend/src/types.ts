@@ -8,6 +8,7 @@ export interface User {
   role: Role;
   department: string;
   job_title: string;
+  avatar_url: string;
   permissions: PermissionKey[];
 }
 
@@ -26,6 +27,8 @@ export interface UserPermissionRecord {
   display_name: string;
   role: Role;
   department: string;
+  job_title: string;
+  avatar_url: string;
   permissions: PermissionKey[];
   updated_at: string;
 }

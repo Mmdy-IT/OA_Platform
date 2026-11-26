@@ -33,6 +33,36 @@ class _FakeConnection:
         return None
 
 
+class _FakeLocalResult:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def fetchall(self):
+        return self.rows
+
+
+class _FakeLocalConnection:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def execute(self, *_args, **_kwargs):
+        return _FakeLocalResult(self.rows)
+
+
+class _RecordingCursor:
+    def __init__(self):
+        self.statements: list[str] = []
+
+    def execute(self, statement, *_args, **_kwargs):
+        self.statements.append(statement)
+
+
 def test_login_returns_module_permissions(client, login_as):
     login_as(client, "business", "Business@123")
     me = client.get("/api/auth/me")
@@ -81,6 +111,76 @@ def test_existing_permission_record_is_not_replaced_by_default(monkeypatch):
     )
 
     assert permissions == ("contracts", "templates")
+
+
+def test_permission_table_role_is_authoritative(monkeypatch):
+    monkeypatch.setattr(user_permissions, "_TABLE_READY", True)
+    monkeypatch.setattr(
+        user_permissions,
+        "_connect",
+        lambda: _FakeConnection(
+            {
+                "role": "admin",
+                "department": "信息管理部",
+                "job_title": "系统管理员",
+                "permissions_json": '["dashboard", "contracts"]',
+            }
+        ),
+    )
+
+    profile = user_permissions._fetch_access_profile_for_user(
+        {
+            "id": 101,
+            "username": "local-business",
+            "role": "business",
+            "department": "本地部门",
+        }
+    )
+
+    assert profile["role"] == "admin"
+    assert profile["department"] == "信息管理部"
+    assert profile["permissions"] == ["dashboard", "contracts"]
+
+
+def test_local_user_sync_does_not_overwrite_remote_role(monkeypatch):
+    monkeypatch.setattr(
+        user_permissions,
+        "db_cursor",
+        lambda: _FakeLocalConnection(
+            [
+                {
+                    "id": 3,
+                    "username": "business",
+                    "display_name": "本地业务人员",
+                    "role": "business",
+                    "department": "商务拓展部",
+                }
+            ]
+        ),
+    )
+    cursor = _RecordingCursor()
+
+    user_permissions._sync_local_users(cursor)
+
+    assert len(cursor.statements) == 1
+    update_clause = cursor.statements[0].split("ON DUPLICATE KEY UPDATE", 1)[1]
+    assert "`role`" not in update_clause
+    assert "`permissions_json`" not in update_clause
+
+
+def test_permission_role_change_is_not_hidden_by_default_cache(monkeypatch):
+    rows = [
+        {"role": "business", "permissions_json": '["dashboard", "contracts"]'},
+        {"role": "admin", "permissions_json": '["dashboard", "contracts"]'},
+    ]
+    monkeypatch.setattr(user_permissions, "_TABLE_READY", True)
+    monkeypatch.setattr(user_permissions, "_CACHE_SECONDS", 0)
+    monkeypatch.setattr(user_permissions, "_connect", lambda: _FakeConnection(rows.pop(0)))
+    user_permissions.clear_permission_cache()
+    user = {"id": 102, "username": "role-change", "role": "business"}
+
+    assert user_permissions.resolve_access_profile(user)["role"] == "business"
+    assert user_permissions.resolve_access_profile(user)["role"] == "admin"
 
 
 def test_business_cannot_access_review_module(client, login_as):

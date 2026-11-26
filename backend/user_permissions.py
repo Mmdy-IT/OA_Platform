@@ -83,7 +83,7 @@ _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
 _TABLE_READY = False
 _CACHE_LOCK = threading.Lock()
 _CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
-_CACHE_SECONDS = max(float(os.getenv("OA_PERMISSION_CACHE_SECONDS", "30")), 1.0)
+_CACHE_SECONDS = max(float(os.getenv("OA_PERMISSION_CACHE_SECONDS", "0")), 0.0)
 
 
 def permission_defaults(role: str) -> tuple[str, ...]:
@@ -132,6 +132,7 @@ def _ensure_table(cursor) -> None:
           `role` VARCHAR(20) NOT NULL DEFAULT 'business' COMMENT '系统角色：admin/legal/business',
           `department` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '所属部门',
           `job_title` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '岗位',
+          `avatar_url` VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '飞书头像地址',
           `permissions_json` TEXT NOT NULL COMMENT '已开通的子模块权限 JSON 数组',
           `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -150,6 +151,12 @@ def _ensure_table(cursor) -> None:
             "ADD COLUMN `job_title` VARCHAR(100) NOT NULL DEFAULT '' "
             "COMMENT '岗位' AFTER `department`"
         )
+    if "avatar_url" not in columns:
+        cursor.execute(
+            f"ALTER TABLE {table} "
+            "ADD COLUMN `avatar_url` VARCHAR(1000) NOT NULL DEFAULT '' "
+            "COMMENT '飞书头像地址' AFTER `job_title`"
+        )
     _TABLE_READY = True
 
 
@@ -167,10 +174,14 @@ def _sync_local_users(cursor) -> None:
                 `oa_user_id`, `username`, `display_name`, `role`, `department`, `permissions_json`
             ) VALUES (%s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
-                `username` = VALUES(`username`),
-                `display_name` = VALUES(`display_name`),
-                `role` = VALUES(`role`),
-                `department` = VALUES(`department`)
+                `oa_user_id` = COALESCE(`oa_user_id`, VALUES(`oa_user_id`)),
+                `username` = IF(`username` = '', VALUES(`username`), `username`),
+                `display_name` = IF(
+                    `display_name` = '', VALUES(`display_name`), `display_name`
+                ),
+                `department` = IF(
+                    `department` = '', VALUES(`department`), `department`
+                )
             """,
             (
                 user["id"],
@@ -218,6 +229,7 @@ def _row_to_record(row: dict) -> dict:
         "role": role,
         "department": str(row.get("department") or ""),
         "job_title": str(row.get("job_title") or ""),
+        "avatar_url": str(row.get("avatar_url") or ""),
         "permissions": list(_load_permissions_json(row.get("permissions_json"), role)),
         "updated_at": updated_at or "",
     }
@@ -228,7 +240,8 @@ def _select_by_union_id(cursor, union_id: str) -> dict | None:
     cursor.execute(
         f"""
         SELECT `id`, `oa_user_id`, `union_id`, `username`, `display_name`,
-               `role`, `department`, `job_title`, `permissions_json`, `updated_at`
+               `role`, `department`, `job_title`, `avatar_url`,
+               `permissions_json`, `updated_at`
           FROM {table}
          WHERE `union_id` = %s
          LIMIT 1
@@ -340,6 +353,7 @@ def ensure_feishu_user(
     *,
     union_id: str,
     display_name: str,
+    avatar_url: str = "",
     department: str = "",
     employee_no: str = "",
     open_id: str = "",
@@ -396,25 +410,26 @@ def ensure_feishu_user(
                 )
 
             if record:
+                avatar_value = avatar_url.strip() or str(record.get("avatar_url") or "")
                 cursor.execute(
                     f"""
                     UPDATE {table}
                        SET `oa_user_id` = %s,
                            `username` = %s,
                            `display_name` = %s,
-                           `role` = %s,
-                           `department` = %s,
-                           `job_title` = %s
+                           `department` = IF(`department` = '', %s, `department`),
+                           `job_title` = IF(`job_title` = '', %s, `job_title`),
+                           `avatar_url` = %s
                      WHERE `id` = %s
                     """,
                     (
                         local_user["id"],
                         local_user["username"],
                         local_user["display_name"],
-                        local_user["role"],
-                        local_user["department"],
+                        employee_department or local_user["department"],
                         str(record.get("job_title") or "").strip()
                         or employee_job_title,
+                        avatar_value,
                         record["id"],
                     ),
                 )
@@ -423,8 +438,9 @@ def ensure_feishu_user(
                     f"""
                     INSERT INTO {table} (
                         `oa_user_id`, `union_id`, `username`, `display_name`,
-                        `role`, `department`, `job_title`, `permissions_json`
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        `role`, `department`, `job_title`, `avatar_url`,
+                        `permissions_json`
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         local_user["id"],
@@ -434,6 +450,7 @@ def ensure_feishu_user(
                         local_user["role"],
                         employee_department or local_user["department"],
                         employee_job_title,
+                        avatar_url.strip(),
                         json.dumps(new_user_permissions(), ensure_ascii=False),
                     ),
                 )
@@ -454,7 +471,8 @@ def _select_record(cursor, record_id: int) -> dict | None:
     cursor.execute(
         f"""
         SELECT `id`, `oa_user_id`, `union_id`, `username`, `display_name`,
-               `role`, `department`, `job_title`, `permissions_json`, `updated_at`
+               `role`, `department`, `job_title`, `avatar_url`,
+               `permissions_json`, `updated_at`
           FROM {table}
          WHERE `id` = %s
         """,
@@ -474,7 +492,8 @@ def list_user_permissions() -> list[dict]:
             cursor.execute(
                 f"""
                 SELECT `id`, `oa_user_id`, `union_id`, `username`, `display_name`,
-                       `role`, `department`, `job_title`, `permissions_json`, `updated_at`
+                       `role`, `department`, `job_title`, `avatar_url`,
+                       `permissions_json`, `updated_at`
                   FROM {table}
                  ORDER BY FIELD(`role`, 'admin', 'legal', 'business'), `display_name` ASC, `id` ASC
                 """
@@ -545,6 +564,7 @@ def _fallback_access_profile(user: dict, *, default_permissions: bool) -> dict[s
         "permissions": list(permissions),
         "department": str(user.get("department") or ""),
         "job_title": str(user.get("job_title") or ""),
+        "avatar_url": str(user.get("avatar_url") or ""),
     }
 
 
@@ -574,7 +594,8 @@ def _fetch_access_profile_for_user(user: dict) -> dict[str, Any]:
             _ensure_table(cursor)
             cursor.execute(
                 f"""
-                SELECT `role`, `department`, `job_title`, `permissions_json`
+                SELECT `role`, `department`, `job_title`, `avatar_url`,
+                       `permissions_json`
                   FROM {table}
                  WHERE {' OR '.join(clauses)}
                  LIMIT 1
@@ -597,6 +618,7 @@ def _fetch_access_profile_for_user(user: dict) -> dict[str, Any]:
         ),
         "department": str(row.get("department") or user.get("department") or ""),
         "job_title": str(row.get("job_title") or ""),
+        "avatar_url": str(row.get("avatar_url") or user.get("avatar_url") or ""),
     }
 
 
@@ -610,16 +632,18 @@ def resolve_access_profile(user: dict) -> dict[str, Any]:
     union_id = str(user.get("union_id") or "").strip()
     cache_key = f"id:{oa_user_id}" if oa_user_id is not None else f"union:{union_id or username}"
     now = time.monotonic()
-    with _CACHE_LOCK:
-        cached = _CACHE.get(cache_key)
-        if cached and cached[0] > now:
-            return dict(cached[1])
+    if _CACHE_SECONDS > 0:
+        with _CACHE_LOCK:
+            cached = _CACHE.get(cache_key)
+            if cached and cached[0] > now:
+                return dict(cached[1])
     try:
         profile = _fetch_access_profile_for_user(user)
     except UserPermissionError:
         profile = _fallback_access_profile(user, default_permissions=False)
-    with _CACHE_LOCK:
-        _CACHE[cache_key] = (now + _CACHE_SECONDS, dict(profile))
+    if _CACHE_SECONDS > 0:
+        with _CACHE_LOCK:
+            _CACHE[cache_key] = (now + _CACHE_SECONDS, dict(profile))
     return profile
 
 

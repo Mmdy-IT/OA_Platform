@@ -111,9 +111,11 @@ def _public_user(user: dict) -> dict:
             "role",
             "department",
             "job_title",
+            "avatar_url",
         )
     }
     data["permissions"] = list(user.get("permissions") or [])
+    data["avatar_url"] = str(user.get("avatar_url") or "")
     return data
 
 
@@ -639,6 +641,7 @@ def login(payload: LoginRequest, response: Response):
             "role": profile["role"],
             "department": profile["department"],
             "job_title": profile["job_title"],
+            "avatar_url": profile.get("avatar_url", ""),
             "permissions": profile["permissions"],
         }
     )
@@ -727,6 +730,7 @@ def feishu_callback(request: Request):
         user = user_permissions.ensure_feishu_user(
             union_id=union_id,
             display_name=str(profile.get("name") or "").strip(),
+            avatar_url=str(profile.get("avatar_url") or "").strip(),
             department=str(profile.get("department_name") or "").strip(),
             employee_no=str(profile.get("employee_no") or ""),
             open_id=str(profile.get("open_id") or ""),

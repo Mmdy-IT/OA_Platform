@@ -16,6 +16,7 @@ class FakeFeishuClient:
             "open_id": "ou_test",
             "union_id": "on_test_union",
             "name": "飞书测试用户",
+            "avatar_url": "https://example.com/avatar.png",
             "department_name": "测试部门",
         }
 
@@ -53,16 +54,22 @@ def test_feishu_callback_creates_oa_session(client, feishu_settings, monkeypatch
     state = client.cookies.get("oa_feishu_state")
     assert state
 
-    monkeypatch.setattr(
-        user_permissions,
-        "ensure_feishu_user",
-        lambda **_: {
+    captured: dict = {}
+
+    def fake_ensure_feishu_user(**kwargs):
+        captured.update(kwargs)
+        return {
             "id": 3,
             "username": "business",
             "display_name": "飞书测试用户",
             "role": "business",
             "department": "测试部门",
-        },
+        }
+
+    monkeypatch.setattr(
+        user_permissions,
+        "ensure_feishu_user",
+        fake_ensure_feishu_user,
     )
 
     response = client.get(
@@ -76,6 +83,7 @@ def test_feishu_callback_creates_oa_session(client, feishu_settings, monkeypatch
     me = client.get("/api/auth/me")
     assert me.status_code == 200
     assert me.json()["user"]["username"] == "business"
+    assert captured["avatar_url"] == "https://example.com/avatar.png"
 
 
 def test_feishu_callback_rejects_invalid_state(client, feishu_settings):

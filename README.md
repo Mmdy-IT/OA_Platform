@@ -100,6 +100,8 @@ $env:OA_PARTY_DB_NAME = "mmdy_db"
 
 人员权限表首次打开「系统管理 / 权限管理」时会自动创建，并把 OA 本地人员同步进去。若 `mmdy_db` 暂时不可用，登录与合同功能会按角色默认权限降级运行，权限管理页面会提示数据库不可用。
 
+人员角色以 `mmdy_db.oa_user_permission.role` 为唯一依据，本地 SQLite `users.role` 只用于初始化新人员，不会反向覆盖远程权限表。直接修改远程表后刷新页面即可生效；默认不缓存权限数据，如需降低远程查询频率，可通过 `OA_PERMISSION_CACHE_SECONDS` 设置缓存秒数。
+
 表名也可以按需通过 `OA_PARTY_DB_TABLE`、`OA_WAREHOUSE_DB_TABLE`、`OA_CONTRACT_ARCHIVE_TABLE`、`OA_USER_PERMISSION_TABLE` 临时覆盖。
 
 ## 飞书登录
@@ -122,7 +124,7 @@ auto_provision = true
 password_login = false
 ```
 
-顶部用户区显示 `oa_user_permission.job_title`；首次飞书登录会从 `mmdy_employee_info.job_title` 和 `dept_path` 同步岗位与部门。历史账号岗位为空时显示「岗位未设置」。
+顶部用户区显示飞书头像、姓名和 `oa_user_permission.job_title`；首次飞书登录会从 `mmdy_employee_info.job_title` 和 `dept_path` 同步岗位与部门，同时把飞书 `avatar_url` 写入 `oa_user_permission.avatar_url`。历史账号岗位为空时显示「岗位未设置」。
 
 飞书开放平台需要配置：
 
@@ -172,6 +174,7 @@ Vite 会把 `/api` 代理到 `http://127.0.0.1:8000`，因此后端仍需同时�
 - 仅已归档模板可永久删除：删除入口只对法务/管理员开放；删除后模板记录移除，历史合同保存的模板正文与字段快照保持不变。
 - 子模块权限是接口与菜单的统一依据：新增账号首次登录时默认仅开通「工作台 + 合同列表」普通权限，法务、审核和模板等子模块须由管理员在权限管理中额外开通；已有权限配置不会被新账号默认值覆盖。管理员调整权限后，用户刷新页面或重新登录即可生效。
 - 飞书 `union_id` 允许留空，但同一 `union_id` 只能绑定一名人员；后续接入飞书登录时，将以该字段匹配 OA 人员及权限记录。
+- 模板编辑器中甲方、乙方主体字段由系统自动生成，包括主体名称、统一社会信用代码、户名、开户行、行号、税号、地址和联系方式；选择主体名称后，同侧信息会自动带出，系统字段不可删除或改写标识。
 - Word/PDF 导入仅生成模板草稿：Word 中的图片、页眉页脚，以及 PDF 中的复杂表格/图形不会完整保留，导入后需人工核对提示信息并补齐正文与空白项。
 
 ## 测试

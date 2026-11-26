@@ -43,6 +43,12 @@ export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const displayNameParts = (user?.display_name || "")
+    .split("·")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const displayName = displayNameParts[0] || user?.username || "OA 用户";
+  const jobTitle = user?.job_title || displayNameParts[1] || "岗位未设置";
 
   useEffect(() => {
     if (window.innerWidth < 992) setCollapsed(true);
@@ -280,10 +286,9 @@ export function AppLayout() {
                     disabled: true,
                     label: (
                       <div className="dropdown-user-card">
-                        <strong>{user?.display_name}</strong>
+                        <strong>{displayName}</strong>
                         <span>
-                          {[user?.department, user?.job_title].filter(Boolean).join(" · ") ||
-                            "岗位未设置"}
+                          {[user?.department, jobTitle].filter(Boolean).join(" · ")}
                         </span>
                       </div>
                     ),
@@ -299,10 +304,14 @@ export function AppLayout() {
               }}
             >
               <button type="button" className="topbar-user">
-                <Avatar size={38} className={`user-avatar role-${user?.role}`}>
+                <Avatar
+                  size={38}
+                  src={user?.avatar_url || undefined}
+                  className={`user-avatar role-${user?.role}`}
+                >
                   {initials(user?.display_name)}
                 </Avatar>
-                <span>{user?.job_title || "岗位未设置"}</span>
+                <span>{`${displayName} | ${jobTitle}`}</span>
               </button>
             </Dropdown>
           </div>
