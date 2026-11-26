@@ -97,6 +97,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  updateParty: (creditCode: string, payload: PartyInfo) =>
+    request<PartyInfo>(`/parties/${encodeURIComponent(creditCode)}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
   warehouses: () => request<{ items: WarehouseInfo[] }>("/warehouses"),
 
   adminPermissions: () =>
@@ -154,7 +159,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   bundleRequirements: (templateId: number) =>
-    request<{ items: BundleRequirement[]; department: string }>(
+    request<{ items: BundleRequirement[] }>(
       `/bundle-requirements?template_id=${templateId}`,
     ),
   bundleRules: () => request<{ items: BundleRule[] }>("/bundle-rules"),

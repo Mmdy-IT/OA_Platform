@@ -19,8 +19,13 @@ class PartyConflictError(PartyDatabaseError):
     """Raised when a party with the same name already exists."""
 
 
+class PartyNotFoundError(PartyDatabaseError):
+    """Raised when a party record does not exist."""
+
+
 PARTY_COLUMNS = (
     "party_type",
+    "contract_code",
     "entity_name",
     "unified_social_credit_code",
     "account_name",
@@ -71,6 +76,12 @@ def _ensure_schema(cursor, full_table: str) -> None:
             "COMMENT '主体类型：甲方/乙方' AFTER `entity_name`"
         )
         cursor.execute(f"UPDATE {full_table} SET `party_type` = '甲方'")
+    if "contract_code" not in columns:
+        cursor.execute(
+            f"ALTER TABLE {full_table} "
+            "ADD COLUMN `contract_code` VARCHAR(20) NOT NULL DEFAULT '' "
+            "COMMENT '合同编码' AFTER `party_type`"
+        )
     _SCHEMA_READY = True
 
 
@@ -146,12 +157,23 @@ def create_party(values: dict[str, str]) -> dict[str, str]:
         column: str(values.get(column) or "").strip()
         for column in PARTY_COLUMNS
     }
-    cleaned["party_type"] = "乙方"
+    cleaned["party_type"] = (
+        "甲方" if cleaned["party_type"] == "甲方" else "乙方"
+    )
+    if cleaned["party_type"] == "乙方":
+        cleaned["contract_code"] = ""
     connection = None
     try:
         connection = pymysql.connect(**connection_config())
         with connection.cursor() as cursor:
             _ensure_schema(cursor, full_table)
+            cursor.execute(
+                f"SELECT 1 FROM {full_table} "
+                "WHERE `unified_social_credit_code` = %s LIMIT 1",
+                (original_code,),
+            )
+            if not cursor.fetchone():
+                raise PartyNotFoundError("主体信息不存在")
             cursor.execute(
                 f"""
                 SELECT 1
@@ -183,6 +205,72 @@ def create_party(values: dict[str, str]) -> dict[str, str]:
             connection.close()
     clear_cache()
     return cleaned
+
+
+def update_party(original_credit_code: str, values: dict[str, str]) -> dict[str, str]:
+    database = get_database_name()
+    table = get_table_name("party", "OA_PARTY_DB_TABLE", "mmdy_party_info")
+    full_table = f"{_identifier(database, '主体库数据库')}.{_identifier(table, '主体库数据表')}"
+    original_code = (original_credit_code or "").strip()
+    if not original_code:
+        raise PartyDatabaseError("主体统一社会信用代码不能为空")
+    cleaned = {
+        column: str(values.get(column) or "").strip()
+        for column in PARTY_COLUMNS
+    }
+    cleaned["party_type"] = "甲方" if cleaned["party_type"] == "甲方" else "乙方"
+    if cleaned["party_type"] == "乙方":
+        cleaned["contract_code"] = ""
+    connection = None
+    try:
+        connection = pymysql.connect(**connection_config())
+        with connection.cursor() as cursor:
+            _ensure_schema(cursor, full_table)
+            cursor.execute(
+                f"""
+                SELECT 1
+                  FROM {full_table}
+                 WHERE (`entity_name` = %s OR `unified_social_credit_code` = %s)
+                   AND `unified_social_credit_code` <> %s
+                 LIMIT 1
+                """,
+                (
+                    cleaned["entity_name"],
+                    cleaned["unified_social_credit_code"],
+                    original_code,
+                ),
+            )
+            if cursor.fetchone():
+                raise PartyConflictError("该主体名称或统一社会信用代码已存在")
+            assignments = ", ".join(f"`{column}` = %s" for column in PARTY_COLUMNS)
+            cursor.execute(
+                f"UPDATE {full_table} SET {assignments} "
+                "WHERE `unified_social_credit_code` = %s",
+                (
+                    *(cleaned[column] for column in PARTY_COLUMNS),
+                    original_code,
+                ),
+            )
+        connection.commit()
+    except (PartyConflictError, PartyDatabaseError):
+        raise
+    except pymysql.MySQLError as exc:
+        raise PartyDatabaseError("主体信息保存失败") from exc
+    finally:
+        if connection is not None:
+            connection.close()
+    clear_cache()
+    return cleaned
+
+
+def contract_code_for_party(entity_name: str, party_type: str = "甲方") -> str:
+    name = (entity_name or "").strip()
+    if not name:
+        return ""
+    for item in list_parties(query=name, party_type=party_type):
+        if item.get("entity_name") == name:
+            return str(item.get("contract_code") or "").strip()
+    return ""
 
 
 def clear_cache() -> None:

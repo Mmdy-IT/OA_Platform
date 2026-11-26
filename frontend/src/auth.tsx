@@ -17,6 +17,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const HOME_ROUTES: { permission: PermissionKey; path: string }[] = [
   { permission: "dashboard", path: "/dashboard" },
   { permission: "contracts", path: "/contracts" },
+  { permission: "party_a", path: "/party-a" },
   { permission: "parties", path: "/parties" },
   { permission: "reviews", path: "/reviews" },
   { permission: "templates", path: "/templates" },

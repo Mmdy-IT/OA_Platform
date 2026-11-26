@@ -29,6 +29,7 @@ const { Header, Sider, Content } = Layout;
 const PAGE_NAMES: Record<string, string> = {
   "/dashboard": "工作台",
   "/contracts": "合同管理 / 合同列表",
+  "/party-a": "合同管理 / 甲方主体信息",
   "/parties": "合同管理 / 乙方主体信息",
   "/reviews": "合同管理 / 审核工作台",
   "/templates": "合同管理 / 合同模板",
@@ -98,6 +99,13 @@ export function AppLayout() {
         label: "合同列表",
       });
     }
+    if (granted.has("party_a")) {
+      contractChildren.push({
+        key: "/party-a",
+        icon: <TeamOutlined />,
+        label: "甲方主体信息",
+      });
+    }
     if (granted.has("parties")) {
       contractChildren.push({
         key: "/parties",
@@ -156,6 +164,7 @@ export function AppLayout() {
     if (location.pathname.startsWith("/templates")) return "/templates";
     if (location.pathname.startsWith("/bundle-rules")) return "/bundle-rules";
     if (location.pathname.startsWith("/contracts")) return "/contracts";
+    if (location.pathname.startsWith("/party-a")) return "/party-a";
     if (location.pathname.startsWith("/parties")) return "/parties";
     return "/dashboard";
   }, [location.pathname]);

@@ -63,7 +63,7 @@ export function TemplatesPage() {
       if (filter === "active" && template.status !== "active") return false;
       if (filter === "archived" && template.status !== "archived") return false;
       if (!keyword) return true;
-      return [template.name, template.contract_code, template.category, template.description]
+      return [template.name, template.category, template.description]
         .join(" ")
         .toLowerCase()
         .includes(keyword);
@@ -230,7 +230,6 @@ export function TemplatesPage() {
                     <div className="template-card-icon"><FileProtectOutlined /></div>
                     <div className="template-card-badges">
                       <Tag bordered={false}>{template.category}</Tag>
-                      <Tag color="blue" bordered={false}>{template.contract_code}</Tag>
                       <span>{template.version}</span>
                       {template.status === "archived" && <Tag color="default">已归档</Tag>}
                     </div>

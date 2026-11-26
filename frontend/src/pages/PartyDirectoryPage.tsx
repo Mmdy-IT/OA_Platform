@@ -1,4 +1,4 @@
-import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import { EditOutlined, PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import { Button, Form, Input, Modal, Table, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useEffect, useState } from "react";
@@ -8,6 +8,7 @@ import type { PartyInfo } from "../types";
 
 const PARTY_LABELS: Record<keyof PartyInfo, string> = {
   party_type: "主体类型",
+  contract_code: "合同编码",
   entity_name: "主体名称",
   unified_social_credit_code: "统一社会信用代码",
   account_name: "户名",
@@ -18,18 +19,25 @@ const PARTY_LABELS: Record<keyof PartyInfo, string> = {
   contact_phone: "联系方式",
 };
 
-export function PartyDirectoryPage() {
+export function PartyDirectoryPage({
+  partyType = "乙方",
+}: {
+  partyType?: "甲方" | "乙方";
+}) {
+  const isPartyA = partyType === "甲方";
+  const pageTitle = isPartyA ? "甲方主体信息" : "乙方主体信息";
   const [items, setItems] = useState<PartyInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<PartyInfo | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<PartyInfo>();
 
   const load = async (keyword = query) => {
     setLoading(true);
     try {
-      const result = await api.parties(keyword, "乙方");
+      const result = await api.parties(keyword, partyType);
       setItems(result.items);
     } catch (caught) {
       message.error(caught instanceof ApiError ? caught.message : "主体信息加载失败");
@@ -41,10 +49,18 @@ export function PartyDirectoryPage() {
   useEffect(() => {
     void load("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [partyType]);
 
   const openCreate = () => {
+    setEditing(null);
     form.resetFields();
+    form.setFieldsValue({ party_type: partyType, contract_code: "" });
+    setOpen(true);
+  };
+
+  const openEdit = (record: PartyInfo) => {
+    setEditing(record);
+    form.setFieldsValue(record);
     setOpen(true);
   };
 
@@ -52,9 +68,16 @@ export function PartyDirectoryPage() {
     try {
       const values = await form.validateFields();
       setSaving(true);
-      await api.createParty(values);
-      message.success("主体信息已新增");
+      const payload = { ...values, party_type: partyType };
+      if (editing) {
+        await api.updateParty(editing.unified_social_credit_code, payload);
+        message.success("主体信息已更新");
+      } else {
+        await api.createParty(payload);
+        message.success("主体信息已新增");
+      }
       setOpen(false);
+      setEditing(null);
       form.resetFields();
       await load(query);
     } catch (caught) {
@@ -73,6 +96,17 @@ export function PartyDirectoryPage() {
       fixed: "left",
       render: (value: string) => <strong className="party-name-cell">{value}</strong>,
     },
+    ...(isPartyA
+      ? [
+          {
+            title: PARTY_LABELS.contract_code,
+            dataIndex: "contract_code",
+            key: "contract_code",
+            width: 150,
+            render: (value: string) => value ? <code>{value}</code> : "—",
+          },
+        ]
+      : []),
     ...(
       [
         "unified_social_credit_code",
@@ -91,14 +125,25 @@ export function PartyDirectoryPage() {
       ellipsis: true,
       render: (value: string) => value || "—",
     })),
+    {
+      title: "",
+      key: "action",
+      width: 80,
+      fixed: "right",
+      render: (_, record) => (
+        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>
+          编辑
+        </Button>
+      ),
+    },
   ];
 
   return (
     <div className="page-stack">
       <PageHeader
         eyebrow="PARTY DIRECTORY"
-        title="乙方主体信息"
-        description="维护乙方主体信息。列表仅展示 party_type 为「乙方」的主体，搜索按主体名称匹配。"
+        title={pageTitle}
+        description={`维护${partyType}主体信息。列表仅展示 party_type 为「${partyType}」的主体，搜索按主体名称匹配。`}
         actions={
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
             新增
@@ -125,23 +170,35 @@ export function PartyDirectoryPage() {
           columns={columns}
           dataSource={items}
           pagination={{ pageSize: 10, showSizeChanger: false }}
-          scroll={{ x: 1380 }}
+          scroll={{ x: isPartyA ? 1610 : 1460 }}
           locale={{ emptyText: "暂无主体信息" }}
         />
       </div>
 
       <Modal
         open={open}
-        title="新增乙方主体"
+        title={editing ? `编辑${partyType}主体` : `新增${partyType}主体`}
         width={760}
         okText="提交"
         cancelText="取消"
         confirmLoading={saving}
         onOk={submit}
-        onCancel={() => setOpen(false)}
+        onCancel={() => {
+          setOpen(false);
+          setEditing(null);
+        }}
         destroyOnClose
       >
         <Form form={form} layout="vertical" className="party-form-grid">
+          {isPartyA && (
+            <Form.Item
+              name="contract_code"
+              label={PARTY_LABELS.contract_code}
+              rules={[{ required: true, message: "请输入合同编码" }]}
+            >
+              <Input maxLength={20} placeholder="例如：MMDY-CG" />
+            </Form.Item>
+          )}
           <Form.Item
             name="entity_name"
             label={PARTY_LABELS.entity_name}

@@ -149,18 +149,9 @@ class ContractCreate(BaseModel):
 
 class BundleRulePayload(BaseModel):
     name: str = Field(default="", max_length=120)
-    trigger_department: str = Field(min_length=1, max_length=100)
     trigger_template_id: int
     required_template_id: int
     enabled: bool = True
-
-    @field_validator("trigger_department")
-    @classmethod
-    def strip_department(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("触发部门不能为空")
-        return value
 
 
 class ContractUpdate(BaseModel):
@@ -197,6 +188,8 @@ class PermissionUpdate(BaseModel):
 
 
 class PartyCreate(BaseModel):
+    party_type: Literal["甲方", "乙方"] = "乙方"
+    contract_code: str = Field(default="", max_length=20)
     entity_name: str = Field(min_length=1, max_length=255)
     unified_social_credit_code: str = Field(min_length=1, max_length=64)
     account_name: str = Field(min_length=1, max_length=255)
@@ -208,6 +201,11 @@ class PartyCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_required_fields(self):
+        self.contract_code = self.contract_code.strip()
+        if self.party_type == "甲方":
+            self.contract_code = normalize_contract_code(self.contract_code)
+        else:
+            self.contract_code = ""
         required = (
             "entity_name",
             "unified_social_credit_code",

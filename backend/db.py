@@ -66,17 +66,16 @@ CREATE TABLE IF NOT EXISTS contract_bundles (
 CREATE TABLE IF NOT EXISTS contract_bundle_rules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL DEFAULT '',
-    trigger_department TEXT NOT NULL DEFAULT '',
     trigger_template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
     required_template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    UNIQUE(trigger_department, trigger_template_id, required_template_id)
+    UNIQUE(trigger_template_id, required_template_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_bundle_rules_trigger
-    ON contract_bundle_rules(trigger_department, trigger_template_id, enabled);
+    ON contract_bundle_rules(trigger_template_id, enabled);
 
 CREATE TABLE IF NOT EXISTS contracts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -184,6 +183,50 @@ def init_db() -> None:
         if "bundle_id" not in contract_columns:
             conn.execute(
                 "ALTER TABLE contracts ADD COLUMN bundle_id INTEGER REFERENCES contract_bundles(id)"
+            )
+        bundle_rule_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(contract_bundle_rules)").fetchall()
+        }
+        if "trigger_department" in bundle_rule_columns:
+            conn.execute(
+                "ALTER TABLE contract_bundle_rules RENAME TO contract_bundle_rules_legacy"
+            )
+            conn.execute(
+                """
+                CREATE TABLE contract_bundle_rules_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL DEFAULT '',
+                    trigger_template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+                    required_template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(trigger_template_id, required_template_id)
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO contract_bundle_rules_new(
+                    id, name, trigger_template_id, required_template_id,
+                    enabled, created_at, updated_at
+                )
+                SELECT id, name, trigger_template_id, required_template_id,
+                       enabled, created_at, updated_at
+                  FROM contract_bundle_rules_legacy
+                 ORDER BY id ASC
+                """
+            )
+            conn.execute("DROP TABLE contract_bundle_rules_legacy")
+            conn.execute(
+                "ALTER TABLE contract_bundle_rules_new RENAME TO contract_bundle_rules"
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_bundle_rules_trigger
+                    ON contract_bundle_rules(trigger_template_id, enabled)
+                """
             )
         conn.execute(
             """

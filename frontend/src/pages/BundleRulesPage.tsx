@@ -47,7 +47,6 @@ export function BundleRulesPage() {
     setEditing(rule);
     form.setFieldsValue({
       name: rule.name,
-      trigger_department: rule.trigger_department,
       trigger_template_id: rule.trigger_template_id,
       required_template_id: rule.required_template_id,
       enabled: rule.enabled,
@@ -78,7 +77,7 @@ export function BundleRulesPage() {
   const remove = (rule: BundleRule) => {
     Modal.confirm({
       title: "删除合同包规则？",
-      content: `删除后，部门「${rule.trigger_department}」使用「${rule.trigger_template_name}」时将不再强制配套合同。`,
+      content: `删除后，新建「${rule.trigger_template_name}」时将不再强制配套合同。`,
       okText: "删除",
       okButtonProps: { danger: true },
       cancelText: "取消",
@@ -100,12 +99,6 @@ export function BundleRulesPage() {
       dataIndex: "name",
       key: "name",
       render: (value: string) => <strong>{value}</strong>,
-    },
-    {
-      title: "触发部门",
-      dataIndex: "trigger_department",
-      key: "trigger_department",
-      width: 160,
     },
     {
       title: "主合同模板",
@@ -154,7 +147,7 @@ export function BundleRulesPage() {
       <PageHeader
         eyebrow="CONTRACT BUNDLES"
         title="合同包规则"
-        description="配置部门专属的强制配套合同。命中规则后，新建合同会自动生成同包配套合同，同包全部通过后才能下载 PDF。"
+        description="配置主合同模板的强制配套合同。任何人新建命中规则的主合同时，都会自动生成同包配套合同，同包全部通过后才能下载 PDF。"
         actions={
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
             新增规则
@@ -186,13 +179,6 @@ export function BundleRulesPage() {
         <Form form={form} layout="vertical" className="bundle-rule-form">
           <Form.Item name="name" label="规则名称（可选）">
             <Input maxLength={120} placeholder="不填则自动生成" />
-          </Form.Item>
-          <Form.Item
-            name="trigger_department"
-            label="触发部门"
-            rules={[{ required: true, message: "请输入触发部门" }]}
-          >
-            <Input maxLength={100} placeholder="例如：商务拓展部" />
           </Form.Item>
           <Form.Item
             name="trigger_template_id"

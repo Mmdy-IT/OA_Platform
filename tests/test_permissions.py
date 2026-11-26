@@ -74,6 +74,7 @@ def test_login_returns_module_permissions(client, login_as):
     assert legal["permissions"] == [
         "dashboard",
         "contracts",
+        "party_a",
         "parties",
         "reviews",
         "templates",
@@ -260,6 +261,7 @@ def test_permission_management_endpoints(client, login_as, monkeypatch):
     assert [item["key"] for item in payload["modules"]] == [
         "dashboard",
         "contracts",
+        "party_a",
         "parties",
         "reviews",
         "templates",

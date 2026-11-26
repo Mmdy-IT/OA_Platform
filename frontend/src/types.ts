@@ -1,5 +1,11 @@
 export type Role = "admin" | "legal" | "business";
-export type PermissionKey = "dashboard" | "contracts" | "parties" | "reviews" | "templates";
+export type PermissionKey =
+  | "dashboard"
+  | "contracts"
+  | "party_a"
+  | "parties"
+  | "reviews"
+  | "templates";
 
 export interface User {
   id: number;
@@ -59,6 +65,7 @@ export type AutoFillRole = PartyAutoFillRole | WarehouseAutoFillRole;
 
 export interface PartyInfo {
   party_type: "甲方" | "乙方";
+  contract_code: string;
   entity_name: string;
   unified_social_credit_code: string;
   account_name: string;
@@ -174,7 +181,6 @@ export interface ContractBundle {
 export interface BundleRule {
   id: number;
   name: string;
-  trigger_department: string;
   trigger_template_id: number;
   trigger_template_name: string;
   required_template_id: number;
@@ -185,7 +191,6 @@ export interface BundleRule {
 
 export interface BundleRulePayload {
   name: string;
-  trigger_department: string;
   trigger_template_id: number;
   required_template_id: number;
   enabled: boolean;

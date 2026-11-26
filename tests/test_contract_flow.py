@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from backend import contract_archive
+from backend import contract_archive, party_db
 from backend.contract_number import contract_serial_number
 from backend.pdf import _contract_document_values, _format_field_values, render_contract_text
 
@@ -47,7 +47,7 @@ def test_business_to_legal_contract_flow(client, login_as):
     assert created.status_code == 201, created.text
     contract = created.json()
     assert contract["status"] == "draft"
-    assert re.fullmatch(re.escape(template["contract_code"]) + r"\d{12}", contract["contract_no"])
+    assert re.fullmatch(r"TEST\d{12}", contract["contract_no"])
 
     submitted = client.post(f"/api/contracts/{contract['id']}/submit")
     assert submitted.status_code == 200, submitted.text
@@ -76,13 +76,18 @@ def test_business_to_legal_contract_flow(client, login_as):
     assert len(pdf.content) > 10_000
 
 
-def test_contract_number_uses_template_code_and_daily_sequence(client, login_as):
+def test_contract_number_uses_party_code_and_daily_sequence(client, login_as, monkeypatch):
+    monkeypatch.setattr(
+        party_db,
+        "contract_code_for_party",
+        lambda entity_name, party_type="甲方": "MMDY-",
+    )
     login_as(client, "legal", "Legal@123")
     created_template = client.post(
         "/api/templates",
         json={
             "name": "编号规则测试模板",
-            "contract_code": "MMDY-",
+            "contract_code": "HT",
             "category": "通用",
             "description": "",
             "instructions": "",
@@ -90,12 +95,13 @@ def test_contract_number_uses_template_code_and_daily_sequence(client, login_as)
             "fields": [
                 {
                     "key": "甲方",
-                    "label": "甲方",
+                    "label": "甲方名称",
                     "type": "text",
                     "required": False,
                     "hint": "",
                     "placeholder": "",
                     "options": [],
+                    "auto_fill": "party_a_name",
                 }
             ],
         },
@@ -107,17 +113,70 @@ def test_contract_number_uses_template_code_and_daily_sequence(client, login_as)
 
     first = client.post(
         "/api/contracts",
-        json={"template_id": template["id"], "title": "编号规则测试一"},
+        json={
+            "template_id": template["id"],
+            "title": "编号规则测试一",
+            "field_values": {"甲方": "测试甲方"},
+        },
     )
     second = client.post(
         "/api/contracts",
-        json={"template_id": template["id"], "title": "编号规则测试二"},
+        json={
+            "template_id": template["id"],
+            "title": "编号规则测试二",
+            "field_values": {"甲方": "测试甲方"},
+        },
     )
 
     assert first.status_code == 201, first.text
     assert second.status_code == 201, second.text
     assert first.json()["contract_no"] == f"MMDY-{today}0001"
     assert second.json()["contract_no"] == f"MMDY-{today}0002"
+
+
+def test_contract_creation_requires_party_contract_code(client, login_as, monkeypatch):
+    login_as(client, "legal", "Legal@123")
+    template = client.post(
+        "/api/templates",
+        json={
+            "name": "甲方编码缺失测试模板",
+            "category": "通用",
+            "description": "",
+            "instructions": "",
+            "content": "<p>{{甲方}}</p>",
+            "fields": [
+                {
+                    "key": "甲方",
+                    "label": "甲方名称",
+                    "type": "text",
+                    "required": True,
+                    "hint": "",
+                    "placeholder": "",
+                    "options": [],
+                    "auto_fill": "party_a_name",
+                }
+            ],
+        },
+    )
+    assert template.status_code == 201, template.text
+    monkeypatch.setattr(
+        party_db,
+        "contract_code_for_party",
+        lambda entity_name, party_type="甲方": "",
+    )
+
+    login_as(client, "business", "Business@123")
+    response = client.post(
+        "/api/contracts",
+        json={
+            "template_id": template.json()["id"],
+            "title": "甲方编码缺失合同",
+            "field_values": {"甲方": "未配置编码甲方"},
+        },
+    )
+
+    assert response.status_code == 422
+    assert "合同编码" in response.json()["detail"]
 
 
 def test_contract_record_syncs_through_status_transitions(client, login_as, monkeypatch):
@@ -193,7 +252,7 @@ def test_contract_record_syncs_through_status_transitions(client, login_as, monk
     payload = archived[-1]
     assert payload["oa_contract_id"] == contract["id"]
     assert payload["contract_no"] == contract["contract_no"]
-    assert payload["contract_code"] == template["contract_code"]
+    assert payload["contract_code"] == "TEST"
     assert payload["contract_name"] == "归档状态流转测试合同"
     assert payload["initiator_name"] == "陈晨 · 商务经理"
     assert payload["approver_name"] == "林静 · 法务专员"

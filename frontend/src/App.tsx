@@ -129,10 +129,18 @@ export default function App() {
                   }
                 />
                 <Route
+                  path="/party-a"
+                  element={
+                    <RequirePermission permissions={["party_a"]}>
+                      <PartyDirectoryPage partyType="甲方" />
+                    </RequirePermission>
+                  }
+                />
+                <Route
                   path="/parties"
                   element={
                     <RequirePermission permissions={["parties"]}>
-                      <PartyDirectoryPage />
+                      <PartyDirectoryPage partyType="乙方" />
                     </RequirePermission>
                   }
                 />

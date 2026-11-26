@@ -12,13 +12,13 @@ def test_bundle_rule_and_automatic_companion_contract(client, login_as):
         "/api/bundle-rules",
         json={
             "name": "商务合同包测试",
-            "trigger_department": "商务拓展部",
             "trigger_template_id": trigger["id"],
             "required_template_id": required["id"],
             "enabled": True,
         },
     )
     assert rule.status_code == 201, rule.text
+    assert "trigger_department" not in rule.json()
 
     login_as(client, "business", "Business@123")
     requirements = client.get(
@@ -53,7 +53,6 @@ def test_bundle_submit_requires_all_members_complete(client, login_as):
         "/api/bundle-rules",
         json={
             "name": "合同包提交校验",
-            "trigger_department": "商务拓展部",
             "trigger_template_id": trigger["id"],
             "required_template_id": required["id"],
             "enabled": True,

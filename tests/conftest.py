@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import contract_archive, db, security, user_permissions
+from backend import contract_archive, db, party_db, security, user_permissions
 from backend.app import app
 
 
@@ -14,6 +14,26 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "oa.db")
     monkeypatch.setattr(contract_archive, "sync_contract_record", lambda **_: None)
     monkeypatch.setattr(contract_archive, "delete_contract_record", lambda **_: None)
+    def fake_list_parties(force_refresh=False, query="", party_type=""):
+        if party_type != "甲方":
+            return []
+        entity_name = (query or "测试甲方").strip()
+        return [
+            {
+                "party_type": "甲方",
+                "contract_code": "TEST",
+                "entity_name": entity_name,
+                "unified_social_credit_code": "",
+                "account_name": "",
+                "bank_name": "",
+                "bank_branch_code": "",
+                "tax_number": "",
+                "contact_address": "",
+                "contact_phone": "",
+            }
+        ]
+
+    monkeypatch.setattr(party_db, "list_parties", fake_list_parties)
 
     def test_profile(user: dict) -> dict:
         return {

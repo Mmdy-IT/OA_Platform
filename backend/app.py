@@ -17,7 +17,11 @@ from fastapi.staticfiles import StaticFiles
 
 from . import contract_archive, party_db, user_permissions, warehouse_db
 from .amounts import apply_auto_amounts, apply_table_row_auto_values
-from .contract_number import DEFAULT_CONTRACT_CODE, next_contract_number
+from .contract_number import (
+    DEFAULT_CONTRACT_CODE,
+    next_contract_number,
+    normalize_contract_code,
+)
 from .config import get_feishu_settings, password_login_enabled
 from .db import BASE_DIR, db_cursor, init_db, utcnow
 from .feishu import FeishuAuthError, get_feishu_client
@@ -290,7 +294,7 @@ def _bundle_number(conn, now: str) -> str:
         sequence += 1
 
 
-def _required_bundle_templates(conn, template_id: int, department: str) -> list[dict]:
+def _required_bundle_templates(conn, template_id: int) -> list[dict]:
     rows = conn.execute(
         """
         SELECT r.id AS rule_id, r.name AS rule_name, r.required_template_id,
@@ -299,11 +303,10 @@ def _required_bundle_templates(conn, template_id: int, department: str) -> list[
           JOIN templates t ON t.id = r.required_template_id
          WHERE r.enabled = 1
            AND r.trigger_template_id = ?
-           AND (r.trigger_department = '' OR r.trigger_department = ?)
            AND t.status = 'active'
          ORDER BY r.id ASC
         """,
-        (template_id, department or ""),
+        (template_id,),
     ).fetchall()
     unique: dict[int, dict] = {}
     for row in rows:
@@ -321,6 +324,65 @@ def _required_bundle_templates(conn, template_id: int, department: str) -> list[
     return list(unique.values())
 
 
+_PARTY_A_NAME_KEYS = {"party_a", "party_a_name", "甲方", "甲方名称", "甲方主体名称"}
+
+
+def _party_a_name(fields: list[dict], values: dict[str, str]) -> str:
+    for field in fields:
+        if str(field.get("auto_fill") or "") == "party_a_name":
+            value = values.get(str(field.get("key") or ""), "").strip()
+            if value:
+                return value
+    for field in fields:
+        key = str(field.get("key") or "").strip()
+        label = str(field.get("label") or "").replace(" ", "").strip()
+        if key in _PARTY_A_NAME_KEYS or label in _PARTY_A_NAME_KEYS:
+            value = values.get(key, "").strip()
+            if value:
+                return value
+    return ""
+
+
+def _party_contract_code(
+    fields: list[dict],
+    values: dict[str, str],
+    *,
+    allow_default: bool,
+) -> str | None:
+    party_name = _party_a_name(fields, values)
+    if not party_name:
+        return DEFAULT_CONTRACT_CODE if allow_default else None
+    try:
+        code = party_db.contract_code_for_party(party_name, "甲方")
+    except party_db.PartyDatabaseError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="甲方主体信息库暂时不可用，请稍后重试",
+        ) from exc
+    if not code:
+        raise HTTPException(
+            status_code=422,
+            detail=f"甲方主体「{party_name}」尚未配置合同编码，请先在甲方主体信息中维护",
+        )
+    try:
+        return normalize_contract_code(code)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _refreshed_contract_identity(conn, row, fields: list[dict], values: dict[str, str]) -> tuple[str, str]:
+    current_no = str(row["contract_no"])
+    current_code = str(row["contract_code"] or DEFAULT_CONTRACT_CODE)
+    new_code = _party_contract_code(fields, values, allow_default=False)
+    if not new_code or new_code == current_code:
+        return current_no, current_code
+    try:
+        new_no = next_contract_number(conn, new_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return new_no, new_code
+
+
 def _insert_contract_record(
     conn,
     template_row,
@@ -330,6 +392,7 @@ def _insert_contract_record(
     table_adjustments: dict,
     user: dict,
     bundle_id: int | None = None,
+    contract_code_override: str | None = None,
 ) -> int:
     fields = _load_json(template_row["fields_json"], [])
     values = normalize_field_values(field_values)
@@ -342,7 +405,11 @@ def _insert_contract_record(
     values = _filter_values(values, fields)
     _ensure_valid_field_values(fields, values)
     now = utcnow()
-    contract_code = template_row["contract_code"] or DEFAULT_CONTRACT_CODE
+    contract_code = (
+        normalize_contract_code(contract_code_override)
+        if contract_code_override
+        else _party_contract_code(fields, values, allow_default=True)
+    ) or DEFAULT_CONTRACT_CODE
     try:
         contract_no = next_contract_number(conn, contract_code)
     except ValueError as exc:
@@ -476,7 +543,6 @@ def _bundle_rule_dict(row) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
-        "trigger_department": row["trigger_department"],
         "trigger_template_id": row["trigger_template_id"],
         "trigger_template_name": row["trigger_template_name"],
         "required_template_id": row["required_template_id"],
@@ -883,7 +949,9 @@ def notifications(user: dict = Depends(get_current_user)):
 def parties(
     q: str = "",
     party_type: str = "",
-    _user: dict = Depends(require_permission("parties", "contracts", "templates")),
+    _user: dict = Depends(
+        require_permission("party_a", "parties", "contracts", "templates")
+    ),
 ):
     try:
         items = party_db.list_parties(query=q, party_type=party_type)
@@ -898,10 +966,35 @@ def parties(
 @app.post("/api/parties", status_code=status.HTTP_201_CREATED)
 def create_party(
     payload: PartyCreate,
-    _user: dict = Depends(require_permission("parties")),
+    user: dict = Depends(get_current_user),
 ):
+    required_permission = "party_a" if payload.party_type == "甲方" else "parties"
+    if required_permission not in set(user.get("permissions") or []):
+        raise HTTPException(status_code=403, detail="没有权限维护该类型主体信息")
     try:
         return party_db.create_party(payload.model_dump())
+    except party_db.PartyConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except party_db.PartyDatabaseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="主体信息库暂时不可用，请稍后重试。",
+        ) from exc
+
+
+@app.put("/api/parties/{credit_code}")
+def update_party(
+    credit_code: str,
+    payload: PartyCreate,
+    user: dict = Depends(get_current_user),
+):
+    required_permission = "party_a" if payload.party_type == "甲方" else "parties"
+    if required_permission not in set(user.get("permissions") or []):
+        raise HTTPException(status_code=403, detail="没有权限维护该类型主体信息")
+    try:
+        return party_db.update_party(credit_code, payload.model_dump())
+    except party_db.PartyNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except party_db.PartyConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except party_db.PartyDatabaseError as exc:
@@ -1147,13 +1240,13 @@ def list_contracts(
 @app.get("/api/bundle-requirements")
 def bundle_requirements(
     template_id: int,
-    user: dict = Depends(require_permission("contracts", "templates")),
+    _user: dict = Depends(require_permission("contracts", "templates")),
 ):
     with db_cursor() as conn:
         items = _required_bundle_templates(
-            conn, template_id, str(user.get("department") or "")
+            conn, template_id
         )
-    return {"items": items, "department": str(user.get("department") or "")}
+    return {"items": items}
 
 
 @app.get("/api/bundle-rules")
@@ -1190,7 +1283,6 @@ def create_bundle_rule(
         if len(template_map) != 2:
             raise HTTPException(status_code=422, detail="模板不存在")
         name = data["name"].strip() or (
-            f"{data['trigger_department']} · "
             f"{template_map[data['trigger_template_id']]} → "
             f"{template_map[data['required_template_id']]}"
         )
@@ -1198,13 +1290,12 @@ def create_bundle_rule(
             cursor = conn.execute(
                 """
                 INSERT INTO contract_bundle_rules(
-                    name, trigger_department, trigger_template_id,
-                    required_template_id, enabled, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    name, trigger_template_id, required_template_id,
+                    enabled, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     name,
-                    data["trigger_department"],
                     data["trigger_template_id"],
                     data["required_template_id"],
                     1 if data["enabled"] else 0,
@@ -1254,18 +1345,16 @@ def update_bundle_rule(
             conn.execute(
                 """
                 UPDATE contract_bundle_rules
-                   SET name = ?, trigger_department = ?, trigger_template_id = ?,
-                       required_template_id = ?, enabled = ?, updated_at = ?
+                   SET name = ?, trigger_template_id = ?, required_template_id = ?,
+                       enabled = ?, updated_at = ?
                  WHERE id = ?
                 """,
                 (
                     data["name"].strip()
                     or (
-                        f"{data['trigger_department']} · "
                         f"{template_map[data['trigger_template_id']]} → "
                         f"{template_map[data['required_template_id']]}"
                     ),
-                    data["trigger_department"],
                     data["trigger_template_id"],
                     data["required_template_id"],
                     1 if data["enabled"] else 0,
@@ -1348,7 +1437,7 @@ def create_contract_bundle(
             raise HTTPException(status_code=404, detail="合同模板不存在或已归档")
 
         required_templates = _required_bundle_templates(
-            conn, payload.template_id, str(user.get("department") or "")
+            conn, payload.template_id
         )
         bundle_id = None
         if required_templates:
@@ -1382,6 +1471,14 @@ def create_contract_bundle(
         )
 
         if bundle_id is not None:
+            primary_code_row = conn.execute(
+                "SELECT contract_code FROM contracts WHERE id = ?", (primary_id,)
+            ).fetchone()
+            primary_contract_code = (
+                str(primary_code_row["contract_code"])
+                if primary_code_row and primary_code_row["contract_code"]
+                else DEFAULT_CONTRACT_CODE
+            )
             for required in required_templates:
                 required_row = conn.execute(
                     "SELECT * FROM templates WHERE id = ? AND status = 'active'",
@@ -1400,6 +1497,7 @@ def create_contract_bundle(
                     table_adjustments={},
                     user=user,
                     bundle_id=bundle_id,
+                    contract_code_override=primary_contract_code,
                 )
             conn.execute(
                 "UPDATE contract_bundles SET updated_at = ? WHERE id = ?",
@@ -1445,13 +1543,19 @@ def update_contract(
         )
         current_values = _filter_values(current_values, fields)
         _ensure_valid_field_values(fields, current_values)
+        contract_no, contract_code = _refreshed_contract_identity(
+            conn, row, fields, current_values
+        )
         conn.execute(
             """
             UPDATE contracts
-               SET title = ?, field_values_json = ?, table_adjustments_json = ?, updated_at = ?
+               SET contract_no = ?, contract_code = ?, title = ?,
+                   field_values_json = ?, table_adjustments_json = ?, updated_at = ?
              WHERE id = ?
             """,
             (
+                contract_no,
+                contract_code,
                 title,
                 json.dumps(current_values, ensure_ascii=False),
                 json.dumps(current_adjustments, ensure_ascii=False),
@@ -1462,8 +1566,8 @@ def update_contract(
         _insert_event(conn, contract_id, "updated", user, row["status"], row["status"], "更新合同内容")
         _sync_contract_archive(
             oa_contract_id=contract_id,
-            contract_no=row["contract_no"],
-            contract_code=row["contract_code"] or DEFAULT_CONTRACT_CODE,
+            contract_no=contract_no,
+            contract_code=contract_code,
             contract_name=title,
             contract_status=row["status"],
             initiator_name=row["creator_name"],
@@ -1506,18 +1610,24 @@ def submit_contract(
                 status_code=422,
                 detail={"message": "请补充以下必填内容", "fields": missing},
             )
+        contract_no, contract_code = _refreshed_contract_identity(
+            conn, row, fields, values
+        )
         now = utcnow()
         action = "resubmitted" if row["status"] == "rejected" else "submitted"
         conn.execute(
             """
             UPDATE contracts
-               SET status = 'pending', submitted_at = ?, updated_at = ?, field_values_json = ?,
+               SET contract_no = ?, contract_code = ?, status = 'pending',
+                   submitted_at = ?, updated_at = ?, field_values_json = ?,
                    table_adjustments_json = ?,
                    reviewed_at = NULL, reviewer_id = NULL, reviewer_name = NULL,
                    review_comment = ''
              WHERE id = ?
             """,
             (
+                contract_no,
+                contract_code,
                 now,
                 now,
                 json.dumps(values, ensure_ascii=False),
@@ -1536,8 +1646,8 @@ def submit_contract(
         )
         _sync_contract_archive(
             oa_contract_id=contract_id,
-            contract_no=row["contract_no"],
-            contract_code=row["contract_code"] or DEFAULT_CONTRACT_CODE,
+            contract_no=contract_no,
+            contract_code=contract_code,
             contract_name=row["title"],
             contract_status="pending",
             initiator_name=row["creator_name"],

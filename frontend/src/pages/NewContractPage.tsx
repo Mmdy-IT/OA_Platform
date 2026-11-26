@@ -120,11 +120,12 @@ export function NewContractPage() {
   ) => {
     if (!selected) throw new Error("请选择合同模板");
     if (draftId) {
-      await api.updateContract(draftId, {
+      const updated = await api.updateContract(draftId, {
         title,
         field_values: values,
         table_adjustments: tableAdjustments,
       });
+      setContractNo(updated.contract_no);
       return draftId;
     }
     const created = await api.createContractBundle({

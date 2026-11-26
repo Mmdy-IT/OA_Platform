@@ -59,7 +59,6 @@ import type {
 import { FIELD_TYPE_OPTIONS, fieldTypeLabel } from "../utils";
 
 const CATEGORIES = ["采购类", "服务类", "保密类", "劳动人事", "通用"];
-const CONTRACT_CODE_RE = /^[-A-Za-z0-9_\u3400-\u4dbf\u4e00-\u9fff]{1,20}$/;
 
 function sanitizeFieldKey(value: string): string {
   const cleaned = value
@@ -118,7 +117,6 @@ export function TemplateEditorPage() {
   const [activeFields, setActiveFields] = useState<string[]>([]);
   const [templateStatus, setTemplateStatus] = useState<"active" | "archived">("active");
   const [name, setName] = useState("");
-  const [contractCode, setContractCode] = useState("HT");
   const [category, setCategory] = useState("通用");
   const [version, setVersion] = useState("V1.0");
   const [description, setDescription] = useState("");
@@ -132,7 +130,6 @@ export function TemplateEditorPage() {
   useEffect(() => {
     if (isEdit || !importDraft) return;
     setName(importDraft.name);
-    setContractCode(importDraft.contract_code || "HT");
     setCategory(importDraft.category || "通用");
     setDescription(importDraft.description || "");
     setInstructions(importDraft.instructions || "");
@@ -149,7 +146,6 @@ export function TemplateEditorPage() {
       .then((template) => {
         if (!active) return;
         setName(template.name);
-        setContractCode(template.contract_code || "HT");
         setCategory(template.category);
         setVersion(template.version);
         setDescription(template.description);
@@ -264,14 +260,6 @@ export function TemplateEditorPage() {
       message.error("请填写合同名称");
       return null;
     }
-    if (!contractCode.trim()) {
-      message.error("请填写合同编码");
-      return null;
-    }
-    if (!CONTRACT_CODE_RE.test(contractCode.trim())) {
-      message.error("合同编码只能包含中文、字母、数字、下划线或短横线，且不超过 20 位");
-      return null;
-    }
     if (!hasRichContent(content)) {
       message.error("请填写合同正文");
       return null;
@@ -298,7 +286,7 @@ export function TemplateEditorPage() {
     }
     return {
       name: name.trim(),
-      contract_code: contractCode.trim(),
+      contract_code: "HT",
       category: category.trim() || "通用",
       description: description.trim(),
       instructions: instructions.trim(),
@@ -403,18 +391,6 @@ export function TemplateEditorPage() {
           <div className="composer-field">
             <label htmlFor="template-name">合同名称 <em>*</em></label>
             <Input id="template-name" size="large" value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：标准采购合同" maxLength={120} />
-          </div>
-          <div className="composer-field">
-            <label htmlFor="template-contract-code">合同编码 <em>*</em></label>
-            <Input
-              id="template-contract-code"
-              size="large"
-              value={contractCode}
-              onChange={(event) => setContractCode(event.target.value)}
-              placeholder="例如：CG / MMDY-CG"
-              maxLength={20}
-            />
-            <span className="field-help-inline">用于生成合同编号：编码 + 日期 + 4 位流水号。</span>
           </div>
           <div className="composer-field">
             <label htmlFor="template-category">合同分类</label>
@@ -579,7 +555,6 @@ export function TemplateEditorPage() {
           <div className="panel editor-check-panel">
             <div className="panel-head"><div><span className="panel-eyebrow">CHECKLIST</span><h3>模板检查</h3></div></div>
             <div className="check-row"><CheckCircleOutlined className={name.trim() ? "ok" : ""} /><span>已填写合同名称</span></div>
-            <div className="check-row"><CheckCircleOutlined className={!!contractCode.trim() && CONTRACT_CODE_RE.test(contractCode.trim()) ? "ok" : ""} /><span>已填写合同编码</span></div>
             <div className="check-row"><CheckCircleOutlined className={hasRichContent(content) ? "ok" : ""} /><span>已填写合同正文</span></div>
             <div className="check-row"><CheckCircleOutlined className={fields.length ? "ok" : ""} /><span>已配置空白项</span></div>
             <div className="check-row"><CheckCircleOutlined className={!missingDefinitions.length && !duplicateKeys.length && !invalidKeys.length ? "ok" : ""} /><span>占位符与字段定义一致</span></div>
@@ -597,7 +572,7 @@ export function TemplateEditorPage() {
         extra={<Button type="primary" icon={<EditOutlined />} onClick={() => setPreviewOpen(false)}>继续编辑</Button>}
       >
         <div className="drawer-template-meta">
-          <Tag>{category}</Tag><span>编码 {contractCode || "-"}</span><span>{version}</span><span>{fields.length} 个空白项</span>
+          <Tag>{category}</Tag><span>{version}</span><span>{fields.length} 个空白项</span>
         </div>
         {instructions && (
           <div className="drawer-instructions"><strong>填写要求</strong><p>{instructions}</p></div>
