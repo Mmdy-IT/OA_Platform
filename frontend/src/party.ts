@@ -22,7 +22,6 @@ export const PARTY_ATTRIBUTE_META: PartyAttributeMeta[] = [
   { attribute: "bank_branch_code", field: "bank_branch_code", label: "行号" },
   { attribute: "tax_number", field: "tax_number", label: "税号" },
   { attribute: "contact_address", field: "contact_address", label: "联系地址" },
-  { attribute: "contact_phone", field: "contact_phone", label: "联系方式" },
 ];
 
 export const PARTY_SIDE_LABEL: Record<PartySide, string> = {
@@ -55,7 +54,7 @@ export const AUTO_FILL_OPTIONS = [
   },
 ];
 
-const SYSTEM_PARTY_FIELD_KEYS: Record<PartySide, Record<PartyAttribute, string>> = {
+const SYSTEM_PARTY_FIELD_KEYS: Record<PartySide, Record<string, string>> = {
   party_a: {
     name: "甲方",
     credit_code: "甲方信用代码",
@@ -64,7 +63,8 @@ const SYSTEM_PARTY_FIELD_KEYS: Record<PartySide, Record<PartyAttribute, string>>
     bank_branch_code: "甲方行号",
     tax_number: "甲方税号",
     contact_address: "甲方地址",
-    contact_phone: "甲方联系人",
+    contact_person: "甲方联系人",
+    contact_phone: "甲方联系方式",
   },
   party_b: {
     name: "乙方",
@@ -74,36 +74,64 @@ const SYSTEM_PARTY_FIELD_KEYS: Record<PartySide, Record<PartyAttribute, string>>
     bank_branch_code: "乙方行号",
     tax_number: "乙方税号",
     contact_address: "乙方地址",
-    contact_phone: "乙方联系人",
+    contact_person: "乙方联系人",
+    contact_phone: "乙方联系方式",
   },
 };
 
 export const SYSTEM_PARTY_FIELDS: Array<{
   side: PartySide;
-  attribute: PartyAttribute;
-  role: PartyAutoFillRole;
+  attribute?: PartyAttribute;
+  role: PartyAutoFillRole | "";
   key: string;
   label: string;
   required: boolean;
   hint: string;
-}> = (["party_a", "party_b"] as PartySide[]).flatMap((side) =>
-  PARTY_ATTRIBUTE_META.map((item) => {
-    const sideLabel = PARTY_SIDE_LABEL[side];
-    const role = `${side}_${item.attribute}` as PartyAutoFillRole;
-    return {
+}> = (["party_a", "party_b"] as PartySide[]).flatMap((side) => {
+  const sideLabel = PARTY_SIDE_LABEL[side];
+  return [
+    ...PARTY_ATTRIBUTE_META.map((item) => {
+      const role = `${side}_${item.attribute}` as PartyAutoFillRole;
+      return {
+        side,
+        attribute: item.attribute,
+        role,
+        key: SYSTEM_PARTY_FIELD_KEYS[side][item.attribute],
+        label: item.attribute === "name" ? `${sideLabel}名称` : `${sideLabel}${item.label}`,
+        required: item.attribute === "name",
+        hint:
+          item.attribute === "name"
+            ? `从${sideLabel}主体库选择主体，系统会自动带出其余${sideLabel}信息。`
+            : `选择${sideLabel}主体后自动带出${item.label}，无需重复填写。`,
+      };
+    }),
+    {
       side,
-      attribute: item.attribute,
-      role,
-      key: SYSTEM_PARTY_FIELD_KEYS[side][item.attribute],
-      label: item.attribute === "name" ? `${sideLabel}名称` : `${sideLabel}${item.label}`,
-      required: item.attribute === "name",
-      hint:
-        item.attribute === "name"
-          ? `从${sideLabel}主体库选择主体，系统会自动带出其余${sideLabel}信息。`
-          : `选择${sideLabel}主体后自动带出${item.label}，无需重复填写。`,
-    };
-  }),
+      role: "" as const,
+      key: SYSTEM_PARTY_FIELD_KEYS[side].contact_person,
+      label: `${sideLabel}联系人`,
+      required: false,
+      hint: `请手动填写${sideLabel}联系人。`,
+    },
+    {
+      side,
+      role: "" as const,
+      key: SYSTEM_PARTY_FIELD_KEYS[side].contact_phone,
+      label: `${sideLabel}联系方式`,
+      required: false,
+      hint: `请手动填写${sideLabel}联系方式，不再从主体库自动带出。`,
+    },
+  ];
+});
+
+const SYSTEM_MANUAL_FIELD_KEYS = new Set(
+  SYSTEM_PARTY_FIELDS.filter((item) => !item.role).map((item) => item.key),
 );
+
+const LEGACY_CONTACT_PHONE_ROLES = new Set([
+  "party_a_contact_phone",
+  "party_b_contact_phone",
+]);
 
 const PARTY_ROLES = new Set<string>(
   (["party_a", "party_b"] as PartySide[]).flatMap((side) =>
@@ -125,7 +153,6 @@ const ATTRIBUTE_PATTERNS: { attribute: PartyAttribute; pattern: RegExp }[] = [
   { attribute: "bank_branch_code", pattern: /联行号|银行行号|行号|bank_branch|branch_code/ },
   { attribute: "account_name", pattern: /户名|账户名|account_name|accountname/ },
   { attribute: "contact_address", pattern: /联系地址|注册地址|地址|address/ },
-  { attribute: "contact_phone", pattern: /联系方式|联系电话|电话|手机|contact_phone|phone|mobile/ },
   { attribute: "name", pattern: /主体名称|名称|全称|name/ },
 ];
 
@@ -212,12 +239,24 @@ export function normalizeAutoFill(field: TemplateField): AutoFillRole | "" {
 }
 
 export function isSystemPartyField(field: TemplateField): boolean {
-  return isPartyAutoFillRole(resolveAutoFill(field));
+  return (
+    isPartyAutoFillRole(resolveAutoFill(field)) ||
+    SYSTEM_MANUAL_FIELD_KEYS.has(field.key)
+  );
 }
 
 export function ensureSystemPartyFields(fields: TemplateField[]): TemplateField[] {
   const existingKeys = new Set(fields.map((field) => field.key));
   const result = fields.map((field) => {
+    const manualDefinition = SYSTEM_PARTY_FIELDS.find(
+      (item) => !item.role && item.key === field.key,
+    );
+    if (manualDefinition) {
+      return { ...field, auto_fill: "" as const, label: manualDefinition.label };
+    }
+    if (LEGACY_CONTACT_PHONE_ROLES.has(String(field.auto_fill || ""))) {
+      return { ...field, auto_fill: "" as const };
+    }
     const role = resolveAutoFill(field);
     if (isPartyAutoFillRole(role) && field.auto_fill !== role) {
       return { ...field, auto_fill: role };
@@ -231,7 +270,11 @@ export function ensureSystemPartyFields(fields: TemplateField[]): TemplateField[
   );
 
   for (const definition of SYSTEM_PARTY_FIELDS) {
-    if (existingRoles.has(definition.role)) continue;
+    if (definition.role) {
+      if (existingRoles.has(definition.role)) continue;
+    } else if (existingKeys.has(definition.key)) {
+      continue;
+    }
     let key = definition.key;
     let suffix = 2;
     while (existingKeys.has(key)) {
@@ -239,7 +282,7 @@ export function ensureSystemPartyFields(fields: TemplateField[]): TemplateField[
       suffix += 1;
     }
     existingKeys.add(key);
-    existingRoles.add(definition.role);
+    if (definition.role) existingRoles.add(definition.role);
     result.push({
       key,
       label: definition.label,
@@ -248,7 +291,7 @@ export function ensureSystemPartyFields(fields: TemplateField[]): TemplateField[
       hint: definition.hint,
       placeholder: "",
       options: [],
-      auto_fill: definition.role,
+      auto_fill: definition.role || "",
     });
   }
   return result;

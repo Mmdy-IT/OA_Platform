@@ -56,8 +56,7 @@ export type PartyAttribute =
   | "bank_name"
   | "bank_branch_code"
   | "tax_number"
-  | "contact_address"
-  | "contact_phone";
+  | "contact_address";
 
 export type PartyAutoFillRole = `${PartySide}_${PartyAttribute}`;
 export type WarehouseAutoFillRole = "warehouse_short_name" | "warehouse_address";

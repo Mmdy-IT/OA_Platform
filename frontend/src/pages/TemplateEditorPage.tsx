@@ -506,7 +506,7 @@ export function TemplateEditorPage() {
               <Button type="primary" ghost size="small" icon={<PlusOutlined />} onClick={addField}>添加空白项</Button>
             </div>
             <p className="fields-config-help">
-              每个空白项对应业务表单中的一个输入控件，并可单独设置填写要求。甲方、乙方主体信息由系统自动生成，选择主体名称后会带出信用代码、地址、联系人等信息。
+              每个空白项对应业务表单中的一个输入控件，并可单独设置填写要求。甲方、乙方主体信息由系统自动生成，选择主体名称后会带出信用代码、地址、开户行等信息；联系人和联系方式由业务人员手动填写。
             </p>
 
             {fields.length ? (
@@ -655,7 +655,7 @@ function FieldConfig({
           />
           <span className="field-help-inline">
             {systemField
-              ? "由系统从主体库自动生成。选择甲方/乙方主体名称后，同侧信用代码、地址、联系人等信息会自动带出。"
+              ? "由系统从主体库自动生成。选择甲方/乙方主体名称后，同侧信用代码、地址、开户行等信息会自动带出；联系人和联系方式需手动填写。"
               : "选择「主体名称（下拉选择）」可从 mmdy_party_info 选择主体并带出同侧信息；选择「仓库简称（下拉选择并填充地址）」可从 mmdy_warehouse_info 选择仓库，正文填充该仓库的完整地址。"}
           </span>
         </div>

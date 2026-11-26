@@ -34,7 +34,6 @@ PARTY_ATTRIBUTES = (
     "bank_branch_code",
     "tax_number",
     "contact_address",
-    "contact_phone",
 )
 PARTY_AUTO_FILL_ROLES = frozenset(
     f"party_{side}_{attribute}" for side in ("a", "b") for attribute in PARTY_ATTRIBUTES
