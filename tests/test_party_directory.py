@@ -5,7 +5,7 @@ from backend import party_db, warehouse_db
 
 PARTY = {
     "party_type": "乙方",
-    "contract_code": "",
+    "party_no": "",
     "entity_name": "演示主体有限公司",
     "unified_social_credit_code": "91330000TEST000001",
     "account_name": "演示主体有限公司",
@@ -19,7 +19,7 @@ PARTY = {
 PARTY_A = {
     **PARTY,
     "party_type": "甲方",
-    "contract_code": "MMDY-A",
+    "party_no": "MMDY-A",
     "entity_name": "演示甲方有限公司",
     "unified_social_credit_code": "91330000TEST000002",
 }
@@ -84,7 +84,7 @@ def test_create_party_endpoint(client, login_as, monkeypatch):
     assert captured["entity_name"] == PARTY["entity_name"]
 
 
-def test_create_party_a_requires_contract_code(client, login_as, monkeypatch):
+def test_create_party_a_requires_party_number(client, login_as, monkeypatch):
     login_as(client, "legal", "Legal@123")
     captured = {}
 
@@ -97,10 +97,10 @@ def test_create_party_a_requires_contract_code(client, login_as, monkeypatch):
 
     assert response.status_code == 201, response.text
     assert response.json()["party_type"] == "甲方"
-    assert response.json()["contract_code"] == "MMDY-A"
-    assert captured["contract_code"] == "MMDY-A"
+    assert response.json()["party_no"] == "MMDY-A"
+    assert captured["party_no"] == "MMDY-A"
 
-    missing_code = client.post("/api/parties", json={**PARTY_A, "contract_code": ""})
+    missing_code = client.post("/api/parties", json={**PARTY_A, "party_no": ""})
     assert missing_code.status_code == 422
 
 
@@ -110,7 +110,7 @@ def test_business_cannot_create_party_a(client, login_as):
     assert response.status_code == 403
 
 
-def test_update_party_a_contract_code(client, login_as, monkeypatch):
+def test_update_party_a_number(client, login_as, monkeypatch):
     login_as(client, "legal", "Legal@123")
     captured = {}
 
@@ -126,7 +126,7 @@ def test_update_party_a_contract_code(client, login_as, monkeypatch):
 
     assert response.status_code == 200, response.text
     assert captured["original_code"] == PARTY_A["unified_social_credit_code"]
-    assert captured["values"]["contract_code"] == "MMDY-A"
+    assert captured["values"]["party_no"] == "MMDY-A"
 
 
 def test_create_party_requires_bank_name(client, login_as):

@@ -21,7 +21,7 @@ def client(tmp_path, monkeypatch):
         return [
             {
                 "party_type": "甲方",
-                "contract_code": "TEST",
+                "party_no": "TEST",
                 "entity_name": entity_name,
                 "unified_social_credit_code": "",
                 "account_name": "",

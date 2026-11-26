@@ -21,6 +21,7 @@ from .contract_number import (
     DEFAULT_CONTRACT_CODE,
     next_contract_number,
     normalize_contract_code,
+    normalize_party_no,
 )
 from .config import get_feishu_settings, password_login_enabled
 from .db import BASE_DIR, db_cursor, init_db, utcnow
@@ -353,7 +354,7 @@ def _party_contract_code(
     if not party_name:
         return DEFAULT_CONTRACT_CODE if allow_default else None
     try:
-        code = party_db.contract_code_for_party(party_name, "甲方")
+        code = party_db.party_number_for_party(party_name, "甲方")
     except party_db.PartyDatabaseError as exc:
         raise HTTPException(
             status_code=503,
@@ -362,10 +363,10 @@ def _party_contract_code(
     if not code:
         raise HTTPException(
             status_code=422,
-            detail=f"甲方主体「{party_name}」尚未配置合同编码，请先在甲方主体信息中维护",
+            detail=f"甲方主体「{party_name}」尚未配置主体编号，请先在甲方主体信息中维护",
         )
     try:
-        return normalize_contract_code(code)
+        return normalize_party_no(code)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

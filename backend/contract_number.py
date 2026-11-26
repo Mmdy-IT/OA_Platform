@@ -19,6 +19,15 @@ def normalize_contract_code(value: str) -> str:
     return code
 
 
+def normalize_party_no(value: str) -> str:
+    code = (value or "").strip()
+    if not code:
+        raise ValueError("请填写主体编号")
+    if not CONTRACT_CODE_RE.fullmatch(code):
+        raise ValueError("主体编号只能包含中文、字母、数字、下划线或短横线，且不超过 20 位")
+    return code
+
+
 def next_contract_number(conn, contract_code: str, now: datetime | None = None) -> str:
     code = normalize_contract_code(contract_code or DEFAULT_CONTRACT_CODE)
     date_part = (now or datetime.now()).strftime("%Y%m%d")

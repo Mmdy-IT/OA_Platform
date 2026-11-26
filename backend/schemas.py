@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .contract_number import normalize_contract_code
+from .contract_number import normalize_contract_code, normalize_party_no
 from .richtext import (
     AUTO_PLACEHOLDER_KEYS,
     FIELD_KEY_RE,
@@ -188,7 +188,7 @@ class PermissionUpdate(BaseModel):
 
 class PartyCreate(BaseModel):
     party_type: Literal["甲方", "乙方"] = "乙方"
-    contract_code: str = Field(default="", max_length=20)
+    party_no: str = Field(default="", max_length=20)
     entity_name: str = Field(min_length=1, max_length=255)
     unified_social_credit_code: str = Field(min_length=1, max_length=64)
     account_name: str = Field(min_length=1, max_length=255)
@@ -200,11 +200,11 @@ class PartyCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_required_fields(self):
-        self.contract_code = self.contract_code.strip()
+        self.party_no = self.party_no.strip()
         if self.party_type == "甲方":
-            self.contract_code = normalize_contract_code(self.contract_code)
+            self.party_no = normalize_party_no(self.party_no)
         else:
-            self.contract_code = ""
+            self.party_no = ""
         required = (
             "entity_name",
             "unified_social_credit_code",

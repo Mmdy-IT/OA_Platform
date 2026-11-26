@@ -52,7 +52,7 @@ MODULES: list[dict[str, str]] = [
         "key": "party_a",
         "label": "甲方主体信息",
         "group": "合同管理",
-        "description": "查看、搜索并新增甲方主体及合同编码。",
+        "description": "查看、搜索并维护甲方主体及主体编号。",
     },
     {
         "key": "parties",

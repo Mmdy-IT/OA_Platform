@@ -8,7 +8,7 @@ import type { PartyInfo } from "../types";
 
 const PARTY_LABELS: Record<keyof PartyInfo, string> = {
   party_type: "主体类型",
-  contract_code: "合同编码",
+  party_no: "主体编号",
   entity_name: "主体名称",
   unified_social_credit_code: "统一社会信用代码",
   account_name: "户名",
@@ -54,7 +54,7 @@ export function PartyDirectoryPage({
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ party_type: partyType, contract_code: "" });
+    form.setFieldsValue({ party_type: partyType, party_no: "" });
     setOpen(true);
   };
 
@@ -99,9 +99,9 @@ export function PartyDirectoryPage({
     ...(isPartyA
       ? [
           {
-            title: PARTY_LABELS.contract_code,
-            dataIndex: "contract_code",
-            key: "contract_code",
+            title: PARTY_LABELS.party_no,
+            dataIndex: "party_no",
+            key: "party_no",
             width: 150,
             render: (value: string) => value ? <code>{value}</code> : "—",
           },
@@ -192,9 +192,9 @@ export function PartyDirectoryPage({
         <Form form={form} layout="vertical" className="party-form-grid">
           {isPartyA && (
             <Form.Item
-              name="contract_code"
-              label={PARTY_LABELS.contract_code}
-              rules={[{ required: true, message: "请输入合同编码" }]}
+              name="party_no"
+              label={PARTY_LABELS.party_no}
+              rules={[{ required: true, message: "请输入主体编号" }]}
             >
               <Input maxLength={20} placeholder="例如：MMDY-CG" />
             </Form.Item>

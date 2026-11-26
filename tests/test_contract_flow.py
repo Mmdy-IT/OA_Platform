@@ -79,7 +79,7 @@ def test_business_to_legal_contract_flow(client, login_as):
 def test_contract_number_uses_party_code_and_daily_sequence(client, login_as, monkeypatch):
     monkeypatch.setattr(
         party_db,
-        "contract_code_for_party",
+        "party_number_for_party",
         lambda entity_name, party_type="甲方": "MMDY-",
     )
     login_as(client, "legal", "Legal@123")
@@ -134,7 +134,7 @@ def test_contract_number_uses_party_code_and_daily_sequence(client, login_as, mo
     assert second.json()["contract_no"] == f"MMDY-{today}0002"
 
 
-def test_contract_creation_requires_party_contract_code(client, login_as, monkeypatch):
+def test_contract_creation_requires_party_number(client, login_as, monkeypatch):
     login_as(client, "legal", "Legal@123")
     template = client.post(
         "/api/templates",
@@ -161,7 +161,7 @@ def test_contract_creation_requires_party_contract_code(client, login_as, monkey
     assert template.status_code == 201, template.text
     monkeypatch.setattr(
         party_db,
-        "contract_code_for_party",
+        "party_number_for_party",
         lambda entity_name, party_type="甲方": "",
     )
 
@@ -176,7 +176,7 @@ def test_contract_creation_requires_party_contract_code(client, login_as, monkey
     )
 
     assert response.status_code == 422
-    assert "合同编码" in response.json()["detail"]
+    assert "主体编号" in response.json()["detail"]
 
 
 def test_contract_record_syncs_through_status_transitions(client, login_as, monkeypatch):

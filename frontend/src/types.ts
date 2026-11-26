@@ -64,7 +64,7 @@ export type AutoFillRole = PartyAutoFillRole | WarehouseAutoFillRole;
 
 export interface PartyInfo {
   party_type: "甲方" | "乙方";
-  contract_code: string;
+  party_no: string;
   entity_name: string;
   unified_social_credit_code: string;
   account_name: string;

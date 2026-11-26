@@ -25,7 +25,7 @@ class PartyNotFoundError(PartyDatabaseError):
 
 PARTY_COLUMNS = (
     "party_type",
-    "contract_code",
+    "party_no",
     "entity_name",
     "unified_social_credit_code",
     "account_name",
@@ -76,11 +76,17 @@ def _ensure_schema(cursor, full_table: str) -> None:
             "COMMENT '主体类型：甲方/乙方' AFTER `entity_name`"
         )
         cursor.execute(f"UPDATE {full_table} SET `party_type` = '甲方'")
-    if "contract_code" not in columns:
+    if "contract_code" in columns and "party_no" not in columns:
         cursor.execute(
             f"ALTER TABLE {full_table} "
-            "ADD COLUMN `contract_code` VARCHAR(20) NOT NULL DEFAULT '' "
-            "COMMENT '合同编码' AFTER `party_type`"
+            "CHANGE COLUMN `contract_code` `party_no` VARCHAR(20) "
+            "NOT NULL DEFAULT '' COMMENT '主体编号'"
+        )
+    elif "party_no" not in columns:
+        cursor.execute(
+            f"ALTER TABLE {full_table} "
+            "ADD COLUMN `party_no` VARCHAR(20) NOT NULL DEFAULT '' "
+            "COMMENT '主体编号' AFTER `party_type`"
         )
     _SCHEMA_READY = True
 
@@ -161,19 +167,12 @@ def create_party(values: dict[str, str]) -> dict[str, str]:
         "甲方" if cleaned["party_type"] == "甲方" else "乙方"
     )
     if cleaned["party_type"] == "乙方":
-        cleaned["contract_code"] = ""
+        cleaned["party_no"] = ""
     connection = None
     try:
         connection = pymysql.connect(**connection_config())
         with connection.cursor() as cursor:
             _ensure_schema(cursor, full_table)
-            cursor.execute(
-                f"SELECT 1 FROM {full_table} "
-                "WHERE `unified_social_credit_code` = %s LIMIT 1",
-                (original_code,),
-            )
-            if not cursor.fetchone():
-                raise PartyNotFoundError("主体信息不存在")
             cursor.execute(
                 f"""
                 SELECT 1
@@ -220,12 +219,19 @@ def update_party(original_credit_code: str, values: dict[str, str]) -> dict[str,
     }
     cleaned["party_type"] = "甲方" if cleaned["party_type"] == "甲方" else "乙方"
     if cleaned["party_type"] == "乙方":
-        cleaned["contract_code"] = ""
+        cleaned["party_no"] = ""
     connection = None
     try:
         connection = pymysql.connect(**connection_config())
         with connection.cursor() as cursor:
             _ensure_schema(cursor, full_table)
+            cursor.execute(
+                f"SELECT 1 FROM {full_table} "
+                "WHERE `unified_social_credit_code` = %s LIMIT 1",
+                (original_code,),
+            )
+            if not cursor.fetchone():
+                raise PartyNotFoundError("主体信息不存在")
             cursor.execute(
                 f"""
                 SELECT 1
@@ -263,13 +269,13 @@ def update_party(original_credit_code: str, values: dict[str, str]) -> dict[str,
     return cleaned
 
 
-def contract_code_for_party(entity_name: str, party_type: str = "甲方") -> str:
+def party_number_for_party(entity_name: str, party_type: str = "甲方") -> str:
     name = (entity_name or "").strip()
     if not name:
         return ""
     for item in list_parties(query=name, party_type=party_type):
         if item.get("entity_name") == name:
-            return str(item.get("contract_code") or "").strip()
+            return str(item.get("party_no") or "").strip()
     return ""
 
 
