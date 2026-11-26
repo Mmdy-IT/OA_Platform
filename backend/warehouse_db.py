@@ -7,6 +7,7 @@ import time
 
 import pymysql
 
+from .config import get_database_name, get_table_name
 from .party_db import connection_config
 
 
@@ -30,8 +31,8 @@ def _identifier(value: str, label: str) -> str:
 
 
 def _fetch_warehouses() -> list[dict[str, str]]:
-    database = os.getenv("OA_WAREHOUSE_DB_NAME", os.getenv("OA_PARTY_DB_NAME", "mmdy_db"))
-    table = os.getenv("OA_WAREHOUSE_DB_TABLE", "mmdy_warehouse_info")
+    database = os.getenv("OA_WAREHOUSE_DB_NAME") or get_database_name()
+    table = get_table_name("warehouse", "OA_WAREHOUSE_DB_TABLE", "mmdy_warehouse_info")
     full_table = f"{_identifier(database, '仓库数据库')}.{_identifier(table, '仓库数据表')}"
     columns = ", ".join(f"`{column}`" for column in WAREHOUSE_COLUMNS)
     sql = (

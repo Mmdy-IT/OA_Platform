@@ -8,6 +8,8 @@ import time
 import pymysql
 from pymysql.cursors import DictCursor
 
+from .config import get_database_name, get_database_settings, get_table_name
+
 
 class PartyDatabaseError(RuntimeError):
     """Raised when the external party directory cannot be queried."""
@@ -38,12 +40,9 @@ def _identifier(value: str, label: str) -> str:
 
 
 def connection_config() -> dict[str, object]:
+    database_settings = get_database_settings()
     return {
-        "host": os.getenv("OA_PARTY_DB_HOST", "rm-bp1pk2rf9z16l9x7aio.mysql.rds.aliyuncs.com"),
-        "port": int(os.getenv("OA_PARTY_DB_PORT", "3306")),
-        "user": os.getenv("OA_PARTY_DB_USER", "mmdy_rpa"),
-        "password": os.getenv("OA_PARTY_DB_PASSWORD", "MMDY@rpa"),
-        "database": os.getenv("OA_PARTY_DB_NAME", "mmdy_db"),
+        **database_settings,
         "charset": "utf8mb4",
         "cursorclass": DictCursor,
         "connect_timeout": 5,
@@ -54,8 +53,8 @@ def connection_config() -> dict[str, object]:
 
 
 def _fetch_parties() -> list[dict[str, str]]:
-    database = os.getenv("OA_PARTY_DB_NAME", "mmdy_db")
-    table = os.getenv("OA_PARTY_DB_TABLE", "mmdy_party_info")
+    database = get_database_name()
+    table = get_table_name("party", "OA_PARTY_DB_TABLE", "mmdy_party_info")
     full_table = f"{_identifier(database, '主体库数据库')}.{_identifier(table, '主体库数据表')}"
     columns = ", ".join(f"`{column}`" for column in PARTY_COLUMNS)
     sql = f"SELECT {columns} FROM {full_table} ORDER BY `entity_name` ASC LIMIT 1000"

@@ -10,6 +10,7 @@ from typing import Any
 
 import pymysql
 
+from .config import get_database_name, get_table_name
 from .db import db_cursor
 from .party_db import connection_config
 
@@ -90,8 +91,8 @@ def _identifier(value: str, label: str) -> str:
 
 
 def _full_table() -> str:
-    database = os.getenv("OA_PARTY_DB_NAME", "mmdy_db")
-    table = os.getenv("OA_USER_PERMISSION_TABLE", "oa_user_permission")
+    database = get_database_name()
+    table = get_table_name("user_permission", "OA_USER_PERMISSION_TABLE", "oa_user_permission")
     return f"{_identifier(database, '人员权限数据库')}.{_identifier(table, '人员权限数据表')}"
 
 

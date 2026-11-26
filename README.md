@@ -21,7 +21,7 @@
 - 法务审核：合同管理菜单下设有审核工作台，支持审核通过、驳回并填写意见、常用驳回意见快捷填入。
 - 合同信息同步：保存草稿、提交审核、撤回、驳回和审核通过时，实时写入公司数据库 `mmdy_db.oa_contract_info`；记录合同名称、编号、编码、4 位流水号、草稿/待审核/已驳回/已通过状态、发起人及审批人等信息。
 - 审核留痕：合同创建、修改、提交、重新提交、撤回、通过、驳回均写入流转记录。
-- PDF 下载：仅审核通过的合同可下载中文正式 PDF，包含合同编号、模板版本、经办人、审核人和审核日期。
+- PDF 下载：仅审核通过的合同可下载中文正式 PDF，正文按 A4 分页，页脚仅保留居中页码。
 - 菜单层级：侧边栏「合同管理」下统一收纳「合同列表」「审核工作台」「合同模板」；菜单项按每个人员实际开通的子模块权限动态显示。
 - 人员权限管理：管理员可从「系统管理 / 权限管理」查看全部人员，并逐人配置「工作台 / 合同列表 / 审核工作台 / 合同模板」子模块权限，同时维护飞书 `union_id` 绑定。权限数据保存在 `mmdy_db.oa_user_permission`。
 - 权限隔离：拥有「审核工作台」权限的人员可查看全部合同，其余人员只能查看本人发起的合同；合同、审核、模板等接口均按子模块权限校验，不只看角色。
@@ -49,44 +49,58 @@ cd ..
 
 浏览器访问 `http://127.0.0.1:8000`。接口文档位于 `http://127.0.0.1:8000/docs`。
 
-主体库默认连接 `mmdy_db.mmdy_party_info`，可通过环境变量覆盖：
+## 数据库配置
+
+主体库、仓库库、合同归档表和人员权限表共用同一套 MySQL 连接配置，统一放在项目根目录的 `config.ini`：
+
+```ini
+[database]
+host = your-mysql-host
+port = 3306
+user = your-mysql-user
+password = your-mysql-password
+name = mmdy_db
+
+[tables]
+party = mmdy_party_info
+warehouse = mmdy_warehouse_info
+contract_archive = oa_contract_info
+user_permission = oa_user_permission
+```
+
+首次部署可复制模板后修改：
 
 ```powershell
-$env:OA_PARTY_DB_HOST = "rm-bp1pk2rf9z16l9x7aio.mysql.rds.aliyuncs.com"
-$env:OA_PARTY_DB_PORT = "3306"
-$env:OA_PARTY_DB_USER = "mmdy_rpa"
-$env:OA_PARTY_DB_PASSWORD = "******"
-$env:OA_PARTY_DB_NAME = "mmdy_db"
-$env:OA_PARTY_DB_TABLE = "mmdy_party_info"
+Copy-Item .\config.example.ini .\config.ini
 ```
+
+`config.ini` 已被 `.gitignore` 忽略，不要提交真实数据库密码。服务器使用多版本发布目录时，可通过环境变量指定共享配置路径：
+
+```powershell
+$env:OA_CONFIG_FILE = "D:\OA_Platform\config.ini"
+```
+
+环境变量仍可覆盖配置文件，适合 NSSM 或临时排查：
+
+```powershell
+$env:OA_PARTY_DB_HOST = "your-mysql-host"
+$env:OA_PARTY_DB_PORT = "3306"
+$env:OA_PARTY_DB_USER = "your-mysql-user"
+$env:OA_PARTY_DB_PASSWORD = "your-mysql-password"
+$env:OA_PARTY_DB_NAME = "mmdy_db"
+```
+
+连接复用规则：
 
 主体库不可用时，合同编辑页会自动降级为手工输入甲方/乙方名称，不影响合同继续起草。
 
-仓库信息默认连接 `mmdy_db.mmdy_warehouse_info`，可通过环境变量覆盖：
-
-```powershell
-$env:OA_WAREHOUSE_DB_NAME = "mmdy_db"
-$env:OA_WAREHOUSE_DB_TABLE = "mmdy_warehouse_info"
-```
-
 仓库信息库不可用时，合同编辑页会降级为手工填写仓库简称和仓库地址，不影响合同继续起草。
 
-合同信息默认同步到 `mmdy_db.oa_contract_info`，可通过环境变量覆盖表名：
+合同归档表首次写入时会自动补充 `serial_no`、`contract_status` 等字段。
 
-```powershell
-$env:OA_CONTRACT_ARCHIVE_TABLE = "oa_contract_info"
-```
+人员权限表首次打开「系统管理 / 权限管理」时会自动创建，并把 OA 本地人员同步进去。若 `mmdy_db` 暂时不可用，登录与合同功能会按角色默认权限降级运行，权限管理页面会提示数据库不可用。
 
-服务首次写入时会自动创建信息表并补充 `serial_no`、`contract_status` 等字段。数据库连接复用主体库的 `OA_PARTY_DB_*` 配置。
-
-人员权限表默认写入 `mmdy_db.oa_user_permission`，可通过环境变量覆盖表名：
-
-```powershell
-$env:OA_USER_PERMISSION_TABLE = "oa_user_permission"
-$env:OA_PERMISSION_CACHE_SECONDS = "30"
-```
-
-首次打开「系统管理 / 权限管理」时会自动创建权限表，并把 OA 本地人员同步进去。若 `mmdy_db` 暂时不可用，登录与合同功能会按角色默认权限降级运行，权限管理页面会提示数据库不可用。
+表名也可以按需通过 `OA_PARTY_DB_TABLE`、`OA_WAREHOUSE_DB_TABLE`、`OA_CONTRACT_ARCHIVE_TABLE`、`OA_USER_PERMISSION_TABLE` 临时覆盖。
 
 前端开发模式（可选）：
 

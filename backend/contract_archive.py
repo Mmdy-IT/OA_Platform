@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import os
 import re
 from datetime import datetime
 
 import pymysql
 
+from .config import get_database_name, get_table_name
 from .contract_number import contract_serial_number
 from .party_db import connection_config
 
@@ -32,8 +32,8 @@ def _identifier(value: str, label: str) -> str:
 
 
 def _full_table() -> str:
-    database = os.getenv("OA_PARTY_DB_NAME", "mmdy_db")
-    table = os.getenv("OA_CONTRACT_ARCHIVE_TABLE", "oa_contract_info")
+    database = get_database_name()
+    table = get_table_name("contract_archive", "OA_CONTRACT_ARCHIVE_TABLE", "oa_contract_info")
     return f"{_identifier(database, '合同归档数据库')}.{_identifier(table, '合同归档数据表')}"
 
 
