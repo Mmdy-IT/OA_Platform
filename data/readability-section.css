@@ -1,0 +1,177 @@
+/* Readability pass: keep secondary text legible without changing page hierarchy */
+.page-eyebrow,
+.panel-eyebrow { font-size: 10.5px; }
+
+.page-description { font-size: 13.5px; }
+.back-button { font-size: 12px !important; }
+
+.brand-subtitle { font-size: 10px; }
+.stage-chip { font-size: 10.5px; }
+.menu-caption { font-size: 10.5px; }
+.app-menu .ant-menu-title-content,
+.app-menu .ant-menu-submenu-title { font-size: 13.5px !important; }
+.sider-tip strong { font-size: 12px; }
+.sider-tip span { font-size: 10.5px; }
+.sider-user-info strong { font-size: 12.5px; }
+.sider-user-info span { font-size: 10.5px; }
+
+.topbar-breadcrumb { font-size: 13px; }
+.topbar-date { font-size: 12px; }
+.phase-tag { font-size: 10.5px !important; }
+.topbar-user { font-size: 12.5px; }
+.dropdown-user-card span { font-size: 12px; }
+
+.stat-copy span { font-size: 12px; }
+.stat-foot { font-size: 11.5px; }
+.stat-foot .anticon { font-size: 11px; }
+.hero-float-card strong { font-size: 11.5px; }
+.hero-float-card span { font-size: 10px; }
+.contract-list-meta,
+.contract-list-time { font-size: 11.5px; }
+.contract-list-arrow { font-size: 11px; }
+.todo-row strong { font-size: 12.5px; }
+.todo-row span { font-size: 11.5px; }
+.todo-row > .anticon { font-size: 11px; }
+.empty-compact strong { font-size: 12.5px; }
+.empty-compact span { font-size: 11.5px; }
+.status-bar-label { font-size: 11.5px; }
+.status-bar-label strong { font-size: 12.5px; }
+
+.filter-pills button { font-size: 12px; }
+.filter-pills button span { font-size: 10.5px; }
+.contract-search { font-size: 12.5px; }
+.ant-table-wrapper .ant-table-thead > tr > th { font-size: 12.5px !important; }
+.status-tag { font-size: 11.5px !important; }
+.table-contract-cell strong { font-size: 13px; }
+.table-contract-cell span { font-size: 11.5px; }
+.template-cell span { font-size: 12px; }
+.template-cell small { font-size: 11px; }
+.muted-cell { font-size: 12px; }
+.date-cell span { font-size: 11.5px; }
+.date-cell small { font-size: 11px; }
+.row-action { font-size: 12px !important; }
+.row-action .anticon { font-size: 10px; }
+.table-empty strong { font-size: 13px; }
+.table-empty span { font-size: 12px; }
+.contract-help-strip strong { font-size: 12.5px; }
+.contract-help-strip span { font-size: 11.5px; }
+.help-strip-tag { font-size: 11.5px !important; }
+
+.template-card > p { font-size: 12px; }
+.template-card-badges .ant-tag { font-size: 11.5px !important; }
+.template-card-badges > span { font-size: 11px; }
+.template-field-preview span { font-size: 11px; }
+.template-card-foot { font-size: 11.5px; }
+.template-card-actions .ant-btn { font-size: 11.5px !important; }
+.template-stat-strip span { font-size: 11.5px; }
+.template-stat-strip small { font-size: 10.5px; }
+.template-meta-grid span { font-size: 11px; }
+.template-meta-grid strong { font-size: 12.5px; }
+.template-brief-tags .ant-tag,
+.template-brief-tags > span { font-size: 11px !important; }
+.template-brief-main > p { font-size: 12px; }
+.drawer-template-meta { font-size: 11.5px; }
+.drawer-instructions strong { font-size: 12px; }
+.drawer-instructions p { font-size: 12px; }
+
+.flow-step strong { font-size: 12px; }
+.flow-step small { font-size: 11px; }
+.completion-widget .ant-progress-text,
+.completion-widget span { font-size: 11px !important; }
+.completion-widget strong { font-size: 12px; }
+
+.composer-field label { font-size: 12.5px !important; }
+.composer-field label small { font-size: 11px !important; }
+.composer-field .ant-input,
+.composer-field .ant-input-affix-wrapper,
+.composer-field .ant-select-selector { font-size: 13px !important; }
+.composer-field .ant-input::placeholder,
+.composer-field .ant-select-selection-placeholder { font-size: 12px !important; }
+.composer-field .ant-input-lg { font-size: 13px !important; }
+.field-index { font-size: 11px; }
+.field-type-chip { font-size: 10.5px; }
+.field-help { font-size: 11.5px; }
+
+.editor-toolbar .ant-btn { font-size: 11.5px !important; }
+.editor-status { font-size: 11px; }
+.placeholder-toolbar > span { font-size: 11px; }
+.content-editor-foot,
+.content-editor-foot code,
+.rich-editor-foot,
+.rich-editor-foot code { font-size: 11px !important; }
+.fields-config-help,
+.field-help-inline { font-size: 11.5px; }
+.field-collapse-label strong { font-size: 12px; }
+.field-collapse-label .ant-tag { font-size: 10px !important; }
+.field-config-body .composer-field label { font-size: 12px !important; }
+.field-config-body .ant-input,
+.field-config-body .ant-select-selector { font-size: 12.5px !important; }
+.field-config-actions .ant-btn { font-size: 11.5px !important; }
+.required-switch span { font-size: 11px; }
+.code-input .ant-input-group-addon { font-size: 11px; }
+.check-row { font-size: 11.5px; }
+.editor-check-note { font-size: 11.5px; }
+.fields-empty strong { font-size: 12.5px; }
+.fields-empty span { font-size: 11.5px; }
+.fields-empty .ant-btn { font-size: 11.5px; }
+
+.detail-subtitle { font-size: 11.5px; }
+.detail-banner-copy strong { font-size: 12.5px; }
+.detail-banner-copy span { font-size: 11.5px; }
+.info-descriptions .ant-descriptions-item-label { font-size: 11.5px !important; }
+.info-descriptions .ant-descriptions-item-content { font-size: 12px !important; }
+.approved-download-panel p,
+.next-step-panel p { font-size: 11.5px; }
+.document-toolbar-meta .ant-tag { font-size: 11px !important; }
+
+.review-hero p { font-size: 11.5px; }
+.review-hero-stats span { font-size: 11px; }
+.review-queue-title button { font-size: 12.5px; }
+.review-queue-meta,
+.review-queue-time { font-size: 11px; }
+.review-queue-time small { font-size: 10.5px; }
+.review-queue-card .ant-btn { font-size: 11.5px; }
+.review-guide-card strong { font-size: 12px; }
+.review-guide-card span { font-size: 11px; }
+.review-empty p { font-size: 11.5px; }
+
+.permission-stat > div > span { font-size: 11.5px; }
+.permission-person strong { font-size: 12.5px; }
+.permission-person span { font-size: 11px; }
+.permission-role { font-size: 10.5px !important; }
+.permission-union-id { font-size: 11px; }
+.permission-tags .ant-tag { font-size: 11px !important; }
+.permission-updated { font-size: 11px; }
+.permission-section-head strong { font-size: 12.5px; }
+.permission-section-head span { font-size: 11px; }
+.permission-editor-section > .muted-text { font-size: 11px; }
+.permission-editor-profile strong { font-size: 15px; }
+.permission-editor-profile span { font-size: 11px; }
+.permission-group-name { font-size: 11px; }
+.permission-group-count { font-size: 10.5px; }
+.permission-group-head .ant-checkbox-wrapper { font-size: 11px; }
+.permission-option strong { font-size: 12px; }
+.permission-option span { font-size: 11px; }
+
+.demo-divider { font-size: 11.5px; }
+.demo-account-main strong { font-size: 13px; }
+.demo-account-main span { font-size: 11.5px; }
+.demo-account code { font-size: 11px; }
+.login-footnote { font-size: 11.5px; }
+
+.review-decision-toggle strong { font-size: 12px; }
+.review-decision-toggle span { font-size: 11px; }
+.review-shortcuts > span { font-size: 11.5px; }
+.review-shortcuts button { font-size: 11px; }
+.review-comment-field label { font-size: 12px; }
+.review-comment-field textarea { font-size: 12.5px; }
+.overdue-chip { font-size: 10.5px; }
+.char-counter { font-size: 10.5px; }
+.placeholder-toolbar button { font-size: 10.5px; }
+.template-content-editor::placeholder { font-size: 12px; }
+.field-order { font-size: 10.5px; }
+.field-collapse-label code { font-size: 10px; }
+.field-type-mini { font-size: 10px; }
+.rich-table-toolbar > span,
+.rich-table-toolbar .ant-btn { font-size: 11px; }
+.rt-select { font-size: 12px; }
