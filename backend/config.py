@@ -17,7 +17,7 @@ def _read_config() -> ConfigParser:
     parser = ConfigParser(interpolation=None)
     path = Path(os.getenv("OA_CONFIG_FILE", str(DEFAULT_CONFIG_PATH)))
     if path.exists():
-        parser.read(path, encoding="utf-8")
+        parser.read(path, encoding="utf-8-sig")
     return parser
 
 
