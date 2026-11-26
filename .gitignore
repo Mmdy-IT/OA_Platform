@@ -11,3 +11,4 @@ frontend/dist/
 *.log
 config.ini
 config.local.ini
+data/verify-*.png

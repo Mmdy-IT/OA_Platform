@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import contract_archive, party_db, user_permissions, warehouse_db
 from .amounts import apply_auto_amounts, apply_table_row_auto_values
 from .contract_number import DEFAULT_CONTRACT_CODE, next_contract_number
+from .config import get_feishu_settings
 from .db import BASE_DIR, db_cursor, init_db, utcnow
+from .feishu import FeishuAuthError, get_feishu_client
 from .importers import import_document
 from .pdf import build_contract_pdf
 from .richtext import (
@@ -49,6 +53,9 @@ from .user_permissions import resolve_permissions
 
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 MAX_TEMPLATE_IMPORT_BYTES = 12 * 1024 * 1024
+FEISHU_STATE_COOKIE = "oa_feishu_state"
+FEISHU_NEXT_COOKIE = "oa_feishu_next"
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -94,6 +101,39 @@ def _public_user(user: dict) -> dict:
     data = {key: user[key] for key in ("id", "username", "display_name", "role", "department")}
     data["permissions"] = list(user.get("permissions") or [])
     return data
+
+
+def _cookie_secure() -> bool:
+    return os.getenv("OA_SECURE_COOKIE", "false").lower() == "true"
+
+
+def _set_session_cookie(response: Response, token: str, max_age: int) -> None:
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=max_age,
+        httponly=True,
+        samesite="lax",
+        secure=_cookie_secure(),
+    )
+
+
+def _safe_next_path(value: str | None, default: str = "/dashboard") -> str:
+    candidate = (value or "").strip()
+    if not candidate.startswith("/") or candidate.startswith("//"):
+        return default
+    return candidate
+
+
+def _decode_cookie_value(value: str | None) -> str:
+    candidate = (value or "").strip()
+    if len(candidate) >= 2 and candidate.startswith('"') and candidate.endswith('"'):
+        candidate = candidate[1:-1]
+    return unquote(candidate)
+
+
+def _feishu_login_error(code: str) -> RedirectResponse:
+    return RedirectResponse(f"/login?feishu_error={quote(code)}", status_code=302)
 
 
 def _template_dict(row) -> dict:
@@ -322,6 +362,106 @@ def logout(request: Request, response: Response):
 @app.get("/api/auth/me")
 def me(user: dict = Depends(get_current_user)):
     return {"user": user}
+
+
+@app.get("/api/auth/feishu/config")
+def feishu_config():
+    try:
+        settings = get_feishu_settings()
+    except RuntimeError:
+        return {"enabled": False}
+    return {"enabled": bool(settings["enabled"])}
+
+
+@app.get("/api/auth/feishu/login")
+def feishu_login(
+    next_path: str = Query(default="/dashboard", alias="next"),
+):
+    try:
+        settings = get_feishu_settings()
+        client = get_feishu_client()
+    except (RuntimeError, FeishuAuthError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if not settings["enabled"]:
+        raise HTTPException(status_code=503, detail="飞书登录未启用")
+
+    state = secrets.token_urlsafe(24)
+    target = _safe_next_path(next_path)
+    response = RedirectResponse(client.build_auth_url(state), status_code=302)
+    response.set_cookie(
+        FEISHU_STATE_COOKIE,
+        state,
+        max_age=600,
+        httponly=True,
+        samesite="lax",
+        secure=_cookie_secure(),
+    )
+    response.set_cookie(
+        FEISHU_NEXT_COOKIE,
+        quote(target, safe=""),
+        max_age=600,
+        httponly=True,
+        samesite="lax",
+        secure=_cookie_secure(),
+    )
+    return response
+
+
+@app.get("/api/auth/feishu/callback")
+def feishu_callback(request: Request):
+    params = request.query_params
+    if params.get("error"):
+        return _feishu_login_error("cancelled")
+
+    code = (params.get("code") or "").strip()
+    state = (params.get("state") or "").strip()
+    saved_state = _decode_cookie_value(request.cookies.get(FEISHU_STATE_COOKIE))
+    if (
+        not code
+        or not state
+        or not saved_state
+        or not secrets.compare_digest(state, saved_state)
+    ):
+        return _feishu_login_error("state_invalid")
+
+    target = _safe_next_path(_decode_cookie_value(request.cookies.get(FEISHU_NEXT_COOKIE)))
+    try:
+        settings = get_feishu_settings()
+        profile = get_feishu_client().get_user_info_by_code(code)
+        union_id = str(profile.get("union_id") or "").strip()
+        if not union_id:
+            return _feishu_login_error("missing_union_id")
+        user = user_permissions.ensure_feishu_user(
+            union_id=union_id,
+            display_name=str(profile.get("name") or "").strip(),
+            department=str(profile.get("department_name") or "").strip(),
+            auto_provision=bool(settings["auto_provision"]),
+        )
+    except user_permissions.FeishuProvisionError as exc:
+        logger.warning("Feishu user is not bound: %s", exc)
+        return _feishu_login_error("unbound")
+    except FeishuAuthError as exc:
+        logger.warning("Feishu OAuth failed: %s", exc)
+        return _feishu_login_error("auth_failed")
+    except (RuntimeError, user_permissions.UserPermissionError) as exc:
+        logger.exception("Feishu login dependency failed: %s", exc)
+        return _feishu_login_error("permission_unavailable")
+
+    token, max_age = create_session(int(user["id"]))
+    response = RedirectResponse(target, status_code=302)
+    _set_session_cookie(response, token, max_age)
+    response.delete_cookie(FEISHU_STATE_COOKIE)
+    response.delete_cookie(FEISHU_NEXT_COOKIE)
+    return response
+
+
+@app.get("/feishu")
+def feishu_entry(request: Request):
+    if request.cookies.get(SESSION_COOKIE):
+        return RedirectResponse("/dashboard", status_code=302)
+    return RedirectResponse(
+        "/api/auth/feishu/login?next=/dashboard", status_code=302
+    )
 
 
 @app.get("/api/dashboard")

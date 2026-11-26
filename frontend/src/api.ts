@@ -75,6 +75,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
+  feishuConfig: () => request<{ enabled: boolean }>("/auth/feishu/config"),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
   me: () => request<{ user: User }>("/auth/me"),
   dashboard: () => request<DashboardData>("/dashboard"),

@@ -1,14 +1,15 @@
 import {
   AppstoreOutlined,
   ArrowRightOutlined,
+  LoginOutlined,
   LockOutlined,
   SafetyCertificateOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { Alert, Button, Input, Tag } from "antd";
-import { useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { ApiError } from "../api";
+import { useEffect, useState } from "react";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { api, ApiError } from "../api";
 import { homePathForUser, useAuth } from "../auth";
 
 const DEMO_ACCOUNTS = [
@@ -38,14 +39,42 @@ const DEMO_ACCOUNTS = [
   },
 ];
 
+const FEISHU_ERRORS: Record<string, string> = {
+  cancelled: "已取消飞书授权",
+  state_invalid: "飞书登录安全校验失败，请重新发起登录",
+  missing_union_id: "飞书未返回 union_id，请检查飞书应用权限",
+  unbound: "飞书账号尚未绑定 OA 人员，请联系管理员",
+  auth_failed: "飞书授权失败，请稍后重试",
+  permission_unavailable: "人员权限服务暂不可用，请稍后重试",
+};
+
 export function LoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [username, setUsername] = useState("business");
   const [password, setPassword] = useState("Business@123");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(
+    () => FEISHU_ERRORS[searchParams.get("feishu_error") || ""] || "",
+  );
+  const [feishuEnabled, setFeishuEnabled] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .feishuConfig()
+      .then((result) => {
+        if (active) setFeishuEnabled(result.enabled);
+      })
+      .catch(() => {
+        if (active) setFeishuEnabled(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   if (user) {
     return <Navigate to={homePathForUser(user)} replace />;
@@ -73,6 +102,12 @@ export function LoginPage() {
     setUsername(account.username);
     setPassword(account.password);
     setError("");
+  };
+
+  const startFeishuLogin = () => {
+    const from = (location.state as { from?: string } | null)?.from;
+    const next = from && from !== "/login" ? from : "/dashboard";
+    window.location.href = `/api/auth/feishu/login?next=${encodeURIComponent(next)}`;
   };
 
   return (
@@ -148,6 +183,21 @@ export function LoginPage() {
               closable
               onClose={() => setError("")}
             />
+          )}
+
+          {feishuEnabled && (
+            <>
+              <Button
+                size="large"
+                block
+                icon={<LoginOutlined />}
+                className="feishu-login-button"
+                onClick={startFeishuLogin}
+              >
+                飞书账号登录
+              </Button>
+              <div className="demo-divider"><span>或使用账号密码</span></div>
+            </>
           )}
 
           <div className="login-form">

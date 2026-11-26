@@ -11,7 +11,7 @@ from typing import Any
 import pymysql
 
 from .config import get_database_name, get_table_name
-from .db import db_cursor
+from .db import db_cursor, utcnow
 from .party_db import connection_config
 
 
@@ -29,6 +29,10 @@ class UserPermissionConflict(UserPermissionError):
 
 class UserPermissionValidationError(UserPermissionError):
     """Raised when submitted permission data is invalid."""
+
+
+class FeishuProvisionError(UserPermissionError):
+    """Raised when a Feishu identity cannot be mapped to an OA user."""
 
 
 MODULES: list[dict[str, str]] = [
@@ -195,6 +199,184 @@ def _row_to_record(row: dict) -> dict:
         "permissions": list(_load_permissions_json(row.get("permissions_json"), role)),
         "updated_at": updated_at or "",
     }
+
+
+def _select_by_union_id(cursor, union_id: str) -> dict | None:
+    table = _full_table()
+    cursor.execute(
+        f"""
+        SELECT `id`, `oa_user_id`, `union_id`, `username`, `display_name`,
+               `role`, `department`, `permissions_json`, `updated_at`
+          FROM {table}
+         WHERE `union_id` = %s
+         LIMIT 1
+        """,
+        (union_id,),
+    )
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def _local_user_by_id(user_id: int | None) -> dict | None:
+    if user_id is None:
+        return None
+    with db_cursor() as conn:
+        row = conn.execute(
+            "SELECT id, username, display_name, role, department FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def _local_user_by_username(username: str) -> dict | None:
+    if not username:
+        return None
+    with db_cursor() as conn:
+        row = conn.execute(
+            "SELECT id, username, display_name, role, department FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def _create_or_get_local_user(
+    *,
+    union_id: str,
+    username: str,
+    display_name: str,
+    role: str,
+    department: str,
+) -> dict:
+    existing = _local_user_by_username(username)
+    if existing:
+        return existing
+
+    clean_role = role if role in {"admin", "legal", "business"} else "business"
+    clean_name = display_name or "飞书用户"
+    with db_cursor(commit=True) as conn:
+        try:
+            cursor = conn.execute(
+                """
+                INSERT INTO users(
+                    username, password_hash, display_name, role, department, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (username, "!", clean_name, clean_role, department or "", utcnow()),
+            )
+            user_id = int(cursor.lastrowid)
+        except Exception:
+            row = conn.execute(
+                "SELECT id FROM users WHERE username = ?", (username,)
+            ).fetchone()
+            if not row:
+                raise
+            user_id = int(row["id"])
+        row = conn.execute(
+            "SELECT id, username, display_name, role, department FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    if not row:
+        raise FeishuProvisionError("无法创建飞书对应的 OA 用户")
+    return dict(row)
+
+
+def ensure_feishu_user(
+    *,
+    union_id: str,
+    display_name: str,
+    department: str = "",
+    auto_provision: bool = True,
+) -> dict:
+    """Resolve a Feishu union_id to an OA user, creating an ordinary account if needed."""
+    union_value = (union_id or "").strip()
+    if not union_value:
+        raise FeishuProvisionError("飞书用户信息缺少 union_id")
+    if len(union_value) > 64:
+        raise FeishuProvisionError("飞书 union_id 超过 64 个字符")
+
+    table = _full_table()
+    connection = None
+    try:
+        connection = _connect()
+        with connection.cursor() as cursor:
+            _ensure_table(cursor)
+            record = _select_by_union_id(cursor, union_value)
+
+            local_user = None
+            if record:
+                local_user = _local_user_by_id(record.get("oa_user_id"))
+                if not local_user and record.get("username"):
+                    local_user = _local_user_by_username(str(record["username"]))
+
+            if not local_user:
+                if not auto_provision:
+                    raise FeishuProvisionError("飞书账号尚未绑定 OA 人员，请联系管理员")
+                role = str(record.get("role") or "business") if record else "business"
+                username = str(record.get("username") or "").strip() if record else ""
+                local_user = _create_or_get_local_user(
+                    union_id=union_value,
+                    username=username or f"feishu_{union_value}",
+                    display_name=(
+                        str(record.get("display_name") or "").strip()
+                        if record
+                        else display_name
+                    ),
+                    role=role,
+                    department=(
+                        str(record.get("department") or "").strip()
+                        if record
+                        else department
+                    ),
+                )
+
+            if record:
+                cursor.execute(
+                    f"""
+                    UPDATE {table}
+                       SET `oa_user_id` = %s,
+                           `username` = %s,
+                           `display_name` = %s,
+                           `role` = %s,
+                           `department` = %s
+                     WHERE `id` = %s
+                    """,
+                    (
+                        local_user["id"],
+                        local_user["username"],
+                        local_user["display_name"],
+                        local_user["role"],
+                        local_user["department"],
+                        record["id"],
+                    ),
+                )
+            else:
+                cursor.execute(
+                    f"""
+                    INSERT INTO {table} (
+                        `oa_user_id`, `union_id`, `username`, `display_name`,
+                        `role`, `department`, `permissions_json`
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        local_user["id"],
+                        union_value,
+                        local_user["username"],
+                        local_user["display_name"],
+                        local_user["role"],
+                        local_user["department"],
+                        json.dumps(new_user_permissions(), ensure_ascii=False),
+                    ),
+                )
+    except pymysql.IntegrityError as exc:
+        raise UserPermissionConflict("该飞书账号已绑定其他 OA 人员") from exc
+    except pymysql.MySQLError as exc:
+        raise UserPermissionError("人员权限表连接失败，请稍后重试") from exc
+    finally:
+        if connection is not None:
+            connection.close()
+
+    clear_permission_cache()
+    return local_user
 
 
 def _select_record(cursor, record_id: int) -> dict | None:

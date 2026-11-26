@@ -102,6 +102,35 @@ $env:OA_PARTY_DB_NAME = "mmdy_db"
 
 表名也可以按需通过 `OA_PARTY_DB_TABLE`、`OA_WAREHOUSE_DB_TABLE`、`OA_CONTRACT_ARCHIVE_TABLE`、`OA_USER_PERMISSION_TABLE` 临时覆盖。
 
+## 飞书登录
+
+飞书 OAuth 配置位于 `config.ini` 的 `[feishu]` 段：
+
+```ini
+[feishu]
+enabled = true
+app_id = your-feishu-app-id
+app_secret = your-feishu-app-secret
+redirect_uri = http://your-oa-host:9650/api/auth/feishu/callback
+auto_provision = true
+```
+
+飞书开放平台需要配置：
+
+- 网页应用主页：`http://your-oa-host:9650/feishu`
+- 重定向 URL：`http://your-oa-host:9650/api/auth/feishu/callback`
+
+登录流程：
+
+1. 访问 `/api/auth/feishu/login`
+2. 飞书授权后回调 `/api/auth/feishu/callback`
+3. 后端使用 `union_id` 查询 `mmdy_db.oa_user_permission`
+4. 已绑定账号沿用原角色和权限
+5. 未绑定账号在 `auto_provision=true` 时自动创建普通账号，默认权限为「工作台 + 合同列表」
+6. 登录成功后签发现有 `oa_session`，前端路由和权限体系无需改变
+
+登录页会根据 `/api/auth/feishu/config` 自动显示「飞书账号登录」按钮。飞书客户端也可以把应用主页设为 `/feishu`，进入应用后自动发起授权。
+
 前端开发模式（可选）：
 
 ```powershell

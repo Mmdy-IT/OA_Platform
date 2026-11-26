@@ -409,6 +409,21 @@ code {
   box-shadow: 0 10px 24px rgba(90, 106, 70, 0.22);
 }
 
+.feishu-login-button {
+  height: 48px;
+  border-color: #d8e2cc;
+  color: #3f5132;
+  background: #f4f7ed;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.feishu-login-button:hover {
+  border-color: #9daf88 !important;
+  color: #2f3a24 !important;
+  background: #edf2e4 !important;
+}
+
 .demo-divider {
   display: flex;
   align-items: center;

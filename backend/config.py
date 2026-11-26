@@ -74,3 +74,42 @@ def get_database_name() -> str:
 
 def get_table_name(key: str, env_name: str, default: str) -> str:
     return get_setting("tables", key, env_name, default)
+
+
+def _as_bool(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def get_feishu_settings() -> dict[str, object]:
+    settings = {
+        "enabled": _as_bool(
+            get_setting("feishu", "enabled", "OA_FEISHU_ENABLED", "false")
+        ),
+        "app_id": get_setting("feishu", "app_id", "OA_FEISHU_APP_ID", ""),
+        "app_secret": get_setting(
+            "feishu", "app_secret", "OA_FEISHU_APP_SECRET", ""
+        ),
+        "redirect_uri": get_setting(
+            "feishu", "redirect_uri", "OA_FEISHU_REDIRECT_URI", ""
+        ),
+        "auto_provision": _as_bool(
+            get_setting("feishu", "auto_provision", "OA_FEISHU_AUTO_PROVISION", "true")
+        ),
+    }
+    if settings["enabled"]:
+        missing = [
+            label
+            for key, label in (
+                ("app_id", "feishu.app_id"),
+                ("app_secret", "feishu.app_secret"),
+                ("redirect_uri", "feishu.redirect_uri"),
+            )
+            if not settings[key]
+        ]
+        if missing:
+            raise RuntimeError(
+                "飞书配置缺失："
+                + ", ".join(missing)
+                + "。请检查 config.ini 或对应的环境变量。"
+            )
+    return settings
