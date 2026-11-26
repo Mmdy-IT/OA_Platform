@@ -76,7 +76,7 @@ NEW_USER_PERMISSIONS: tuple[str, ...] = ROLE_DEFAULT_PERMISSIONS["business"]
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
 _TABLE_READY = False
 _CACHE_LOCK = threading.Lock()
-_CACHE: dict[str, tuple[float, tuple[str, ...]]] = {}
+_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _CACHE_SECONDS = max(float(os.getenv("OA_PERMISSION_CACHE_SECONDS", "30")), 1.0)
 
 
@@ -529,7 +529,20 @@ def update_user_permission(
     return _row_to_record(row)
 
 
-def _fetch_permissions_for_user(user: dict) -> tuple[str, ...]:
+def _fallback_access_profile(user: dict, *, default_permissions: bool) -> dict[str, Any]:
+    role = str(user.get("role") or "business")
+    permissions = (
+        new_user_permissions() if default_permissions else permission_defaults(role)
+    )
+    return {
+        "role": role,
+        "permissions": list(permissions),
+        "department": str(user.get("department") or ""),
+        "job_title": str(user.get("job_title") or ""),
+    }
+
+
+def _fetch_access_profile_for_user(user: dict) -> dict[str, Any]:
     table = _full_table()
     clauses: list[str] = []
     params: list[Any] = []
@@ -546,7 +559,7 @@ def _fetch_permissions_for_user(user: dict) -> tuple[str, ...]:
         clauses.append("`union_id` = %s")
         params.append(union_id)
     if not clauses:
-        return permission_defaults(str(user.get("role") or "business"))
+        return _fallback_access_profile(user, default_permissions=True)
 
     connection = None
     try:
@@ -555,7 +568,7 @@ def _fetch_permissions_for_user(user: dict) -> tuple[str, ...]:
             _ensure_table(cursor)
             cursor.execute(
                 f"""
-                SELECT `role`, `permissions_json`
+                SELECT `role`, `department`, `job_title`, `permissions_json`
                   FROM {table}
                  WHERE {' OR '.join(clauses)}
                  LIMIT 1
@@ -569,11 +582,23 @@ def _fetch_permissions_for_user(user: dict) -> tuple[str, ...]:
         if connection is not None:
             connection.close()
     if not row:
-        return new_user_permissions()
-    return _load_permissions_json(row.get("permissions_json"), str(row.get("role") or "business"))
+        return _fallback_access_profile(user, default_permissions=True)
+    role = str(row.get("role") or user.get("role") or "business")
+    return {
+        "role": role,
+        "permissions": list(
+            _load_permissions_json(row.get("permissions_json"), role)
+        ),
+        "department": str(row.get("department") or user.get("department") or ""),
+        "job_title": str(row.get("job_title") or ""),
+    }
 
 
-def resolve_permissions(user: dict) -> list[str]:
+def _fetch_permissions_for_user(user: dict) -> tuple[str, ...]:
+    return tuple(_fetch_access_profile_for_user(user)["permissions"])
+
+
+def resolve_access_profile(user: dict) -> dict[str, Any]:
     oa_user_id = user.get("id")
     username = str(user.get("username") or "").strip()
     union_id = str(user.get("union_id") or "").strip()
@@ -582,14 +607,18 @@ def resolve_permissions(user: dict) -> list[str]:
     with _CACHE_LOCK:
         cached = _CACHE.get(cache_key)
         if cached and cached[0] > now:
-            return list(cached[1])
+            return dict(cached[1])
     try:
-        permissions = _fetch_permissions_for_user(user)
+        profile = _fetch_access_profile_for_user(user)
     except UserPermissionError:
-        permissions = permission_defaults(str(user.get("role") or "business"))
+        profile = _fallback_access_profile(user, default_permissions=False)
     with _CACHE_LOCK:
-        _CACHE[cache_key] = (now + _CACHE_SECONDS, tuple(permissions))
-    return list(permissions)
+        _CACHE[cache_key] = (now + _CACHE_SECONDS, dict(profile))
+    return profile
+
+
+def resolve_permissions(user: dict) -> list[str]:
+    return list(resolve_access_profile(user)["permissions"])
 
 
 def clear_permission_cache() -> None:

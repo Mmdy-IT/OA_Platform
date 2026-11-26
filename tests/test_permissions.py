@@ -106,13 +106,22 @@ def test_granted_review_permission_expands_contract_scope(client, login_as, monk
     own_ids = {item["id"] for item in own}
     assert legal_contract_id not in own_ids
 
-    def custom_permissions(user: dict) -> list[str]:
+    def custom_profile(user: dict) -> dict:
         if user.get("username") == "business":
-            return ["dashboard", "contracts", "reviews"]
-        return list(user_permissions.permission_defaults(user.get("role", "business")))
+            permissions = ["dashboard", "contracts", "reviews"]
+        else:
+            permissions = list(
+                user_permissions.permission_defaults(user.get("role", "business"))
+            )
+        return {
+            "role": user.get("role", "business"),
+            "permissions": permissions,
+            "department": user.get("department", ""),
+            "job_title": "",
+        }
 
-    monkeypatch.setattr(security, "resolve_permissions", custom_permissions)
-    monkeypatch.setattr("backend.app.resolve_permissions", custom_permissions)
+    monkeypatch.setattr(security, "resolve_access_profile", custom_profile)
+    monkeypatch.setattr("backend.app.resolve_access_profile", custom_profile)
 
     login_as(client, "business", "Business@123")
     expanded = client.get("/api/contracts").json()["items"]
@@ -179,7 +188,6 @@ def test_permission_values_are_validated(monkeypatch):
     with pytest.raises(user_permissions.UserPermissionValidationError):
         user_permissions._normalize_permission_keys(["dashboard", "unknown"])
 
-    monkeypatch.setattr(security, "resolve_permissions", lambda _user: ["dashboard", "contracts"])
     assert user_permissions._load_permissions_json(
         '["templates", "contracts", "contracts", "bad"]', "business"
     ) == ("contracts", "templates")

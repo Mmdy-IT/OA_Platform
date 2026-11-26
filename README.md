@@ -115,6 +115,15 @@ redirect_uri = http://your-oa-host:9650/api/auth/feishu/callback
 auto_provision = true
 ```
 
+登录页已改为飞书专用入口，不再提供账号密码登录。生产环境保持：
+
+```ini
+[auth]
+password_login = false
+```
+
+顶部用户区显示 `oa_user_permission.job_title`；首次飞书登录会从 `mmdy_employee_info.job_title` 和 `dept_path` 同步岗位与部门。历史账号岗位为空时显示「岗位未设置」。
+
 飞书开放平台需要配置：
 
 - 网页应用主页：`http://your-oa-host:9650/feishu`

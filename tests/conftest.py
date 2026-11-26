@@ -9,16 +9,24 @@ from backend.app import app
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("OA_PASSWORD_LOGIN_ENABLED", "true")
     monkeypatch.setattr(db, "DATA_DIR", tmp_path)
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "oa.db")
     monkeypatch.setattr(contract_archive, "sync_contract_record", lambda **_: None)
     monkeypatch.setattr(contract_archive, "delete_contract_record", lambda **_: None)
 
-    def test_permissions(user: dict) -> list[str]:
-        return list(user_permissions.permission_defaults(user.get("role", "business")))
+    def test_profile(user: dict) -> dict:
+        return {
+            "role": user.get("role", "business"),
+            "permissions": list(
+                user_permissions.permission_defaults(user.get("role", "business"))
+            ),
+            "department": user.get("department", ""),
+            "job_title": "",
+        }
 
-    monkeypatch.setattr(security, "resolve_permissions", test_permissions)
-    monkeypatch.setattr("backend.app.resolve_permissions", test_permissions)
+    monkeypatch.setattr(security, "resolve_access_profile", test_profile)
+    monkeypatch.setattr("backend.app.resolve_access_profile", test_profile)
     with TestClient(app) as test_client:
         yield test_client
 

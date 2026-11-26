@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from . import contract_archive, party_db, user_permissions, warehouse_db
 from .amounts import apply_auto_amounts, apply_table_row_auto_values
 from .contract_number import DEFAULT_CONTRACT_CODE, next_contract_number
-from .config import get_feishu_settings
+from .config import get_feishu_settings, password_login_enabled
 from .db import BASE_DIR, db_cursor, init_db, utcnow
 from .feishu import FeishuAuthError, get_feishu_client
 from .importers import import_document
@@ -48,7 +48,7 @@ from .security import (
     verify_password,
 )
 from .tables import normalize_table_adjustments
-from .user_permissions import resolve_permissions
+from .user_permissions import resolve_access_profile
 
 
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
@@ -98,7 +98,17 @@ def _load_json(raw: str | None, default):
 
 
 def _public_user(user: dict) -> dict:
-    data = {key: user[key] for key in ("id", "username", "display_name", "role", "department")}
+    data = {
+        key: user.get(key)
+        for key in (
+            "id",
+            "username",
+            "display_name",
+            "role",
+            "department",
+            "job_title",
+        )
+    }
     data["permissions"] = list(user.get("permissions") or [])
     return data
 
@@ -326,6 +336,8 @@ def health():
 
 @app.post("/api/auth/login")
 def login(payload: LoginRequest, response: Response):
+    if not password_login_enabled():
+        raise HTTPException(status_code=403, detail="当前仅支持飞书登录")
     with db_cursor() as conn:
         row = conn.execute(
             "SELECT * FROM users WHERE username = ?", (payload.username.strip(),)
@@ -348,7 +360,15 @@ def login(payload: LoginRequest, response: Response):
         "role": row["role"],
         "department": row["department"],
     }
-    user["permissions"] = resolve_permissions(user)
+    profile = resolve_access_profile(user)
+    user.update(
+        {
+            "role": profile["role"],
+            "department": profile["department"],
+            "job_title": profile["job_title"],
+            "permissions": profile["permissions"],
+        }
+    )
     return {"user": _public_user(user)}
 
 

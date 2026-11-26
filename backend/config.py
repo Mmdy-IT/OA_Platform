@@ -80,6 +80,12 @@ def _as_bool(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def password_login_enabled() -> bool:
+    return _as_bool(
+        get_setting("auth", "password_login", "OA_PASSWORD_LOGIN_ENABLED", "false")
+    )
+
+
 def get_feishu_settings() -> dict[str, object]:
     settings = {
         "enabled": _as_bool(

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, Request, status
 
 from .db import db_cursor, utcnow
-from .user_permissions import resolve_permissions
+from .user_permissions import resolve_access_profile
 
 
 SESSION_COOKIE = "oa_session"
@@ -104,7 +104,15 @@ def get_current_user(request: Request) -> dict:
         "role": row["role"],
         "department": row["department"],
     }
-    user["permissions"] = resolve_permissions(user)
+    profile = resolve_access_profile(user)
+    user.update(
+        {
+            "role": profile["role"],
+            "department": profile["department"],
+            "job_title": profile["job_title"],
+            "permissions": profile["permissions"],
+        }
+    )
     return user
 
 

@@ -20,7 +20,7 @@ import brandLogo from "../assets/brand-logo-transparent.png";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import type { NotificationItem } from "../types";
-import { formatDateTime, initials, ROLE_META } from "../utils";
+import { formatDateTime, initials } from "../utils";
 
 const { Header, Sider, Content } = Layout;
 
@@ -135,8 +135,6 @@ export function AppLayout() {
     if (location.pathname.startsWith("/contracts")) return "/contracts";
     return "/dashboard";
   }, [location.pathname]);
-
-  const role = user ? ROLE_META[user.role] : null;
 
   const handleLogout = async () => {
     await logout();
@@ -265,7 +263,10 @@ export function AppLayout() {
                     label: (
                       <div className="dropdown-user-card">
                         <strong>{user?.display_name}</strong>
-                        <span>{user?.department} · {role?.label}</span>
+                        <span>
+                          {[user?.department, user?.job_title].filter(Boolean).join(" · ") ||
+                            "岗位未设置"}
+                        </span>
                       </div>
                     ),
                   },
@@ -283,7 +284,7 @@ export function AppLayout() {
                 <Avatar size={38} className={`user-avatar role-${user?.role}`}>
                   {initials(user?.display_name)}
                 </Avatar>
-                <span>{role?.label}</span>
+                <span>{user?.job_title || "岗位未设置"}</span>
               </button>
             </Dropdown>
           </div>
