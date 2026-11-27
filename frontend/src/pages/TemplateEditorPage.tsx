@@ -125,7 +125,7 @@ export function TemplateEditorPage() {
   const [activeFields, setActiveFields] = useState<string[]>([]);
   const [templateStatus, setTemplateStatus] = useState<"active" | "archived">("active");
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("通用");
+  const [category, setCategory] = useState("");
   const [storedCategories, setStoredCategories] = useState<string[]>([]);
   const [version, setVersion] = useState("V1.0");
   const [description, setDescription] = useState("");
@@ -162,7 +162,7 @@ export function TemplateEditorPage() {
   useEffect(() => {
     if (isEdit || !importDraft) return;
     setName(importDraft.name);
-    setCategory(importDraft.category || "通用");
+    setCategory("");
     setDescription(importDraft.description || "");
     setInstructions(importDraft.instructions || "");
     setContent(importDraft.content);
@@ -295,13 +295,16 @@ export function TemplateEditorPage() {
     }
     setContent(SKELETON_CONTENT);
     setFields(ensureSystemPartyFields(SKELETON_FIELDS));
-    setCategory((current) => (current === "通用" ? "服务类" : current));
     message.success("已载入基础合同骨架，请按需调整");
   };
 
   const validate = (): TemplatePayload | null => {
     if (!name.trim()) {
       message.error("请填写合同名称");
+      return null;
+    }
+    if (!category.trim()) {
+      message.error("请选择或输入合同分类");
       return null;
     }
     if (!hasRichContent(content)) {
@@ -331,7 +334,7 @@ export function TemplateEditorPage() {
     return {
       name: name.trim(),
       contract_code: "HT",
-      category: category.trim() || "通用",
+      category: category.trim(),
       description: description.trim(),
       instructions: instructions.trim(),
       content,
