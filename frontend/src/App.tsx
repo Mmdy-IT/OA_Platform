@@ -20,6 +20,7 @@ import { NewContractPage } from "./pages/NewContractPage";
 import { NoAccessPage } from "./pages/NoAccessPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { PartyDirectoryPage } from "./pages/PartyDirectoryPage";
+import { PermissionRequestPage } from "./pages/PermissionRequestPage";
 import { ReviewInboxPage } from "./pages/ReviewInboxPage";
 import { TemplateEditorPage } from "./pages/TemplateEditorPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
@@ -175,6 +176,10 @@ export default function App() {
                       <BundleRulesPage />
                     </RequirePermission>
                   }
+                />
+                <Route
+                  path="/permission-requests"
+                  element={<PermissionRequestPage />}
                 />
                 <Route
                   path="/admin/permissions"

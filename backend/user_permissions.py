@@ -87,6 +87,7 @@ NEW_USER_PERMISSIONS: tuple[str, ...] = ROLE_DEFAULT_PERMISSIONS["business"]
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
 _TABLE_READY = False
+_REQUEST_TABLE_READY = False
 _CACHE_LOCK = threading.Lock()
 _CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _CACHE_SECONDS = max(float(os.getenv("OA_PERMISSION_CACHE_SECONDS", "0")), 0.0)
@@ -116,6 +117,16 @@ def _employee_table() -> str:
     database = get_database_name()
     table = get_table_name("employee", "OA_EMPLOYEE_TABLE", "mmdy_employee_info")
     return f"{_identifier(database, '员工数据库')}.{_identifier(table, '员工数据表')}"
+
+
+def _request_table() -> str:
+    database = get_database_name()
+    table = get_table_name(
+        "permission_request",
+        "OA_PERMISSION_REQUEST_TABLE",
+        "oa_permission_request",
+    )
+    return f"{_identifier(database, '权限申请数据库')}.{_identifier(table, '权限申请数据表')}"
 
 
 def _connect():
@@ -166,6 +177,36 @@ def _ensure_table(cursor) -> None:
     _TABLE_READY = True
 
 
+def _ensure_request_table(cursor) -> None:
+    global _REQUEST_TABLE_READY
+    if _REQUEST_TABLE_READY:
+        return
+    table = _request_table()
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {table} (
+          `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          `oa_user_id` BIGINT NOT NULL COMMENT '申请人 OA 用户 ID',
+          `username` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '申请人账号',
+          `display_name` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '申请人姓名',
+          `permissions_json` TEXT NOT NULL COMMENT '申请开通的模块权限 JSON 数组',
+          `reason` VARCHAR(1000) NOT NULL COMMENT '开通事由',
+          `status` VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT 'pending/approved/rejected',
+          `reviewer_id` BIGINT NULL COMMENT '审批管理员 OA 用户 ID',
+          `reviewer_name` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '审批管理员姓名',
+          `review_comment` VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '审批意见',
+          `reviewed_at` DATETIME NULL COMMENT '审批时间',
+          `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (`id`),
+          KEY `idx_permission_request_user` (`oa_user_id`),
+          KEY `idx_permission_request_status` (`status`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='OA 权限申请表'
+        """
+    )
+    _REQUEST_TABLE_READY = True
+
+
 def _sync_local_users(cursor) -> None:
     table = _full_table()
     with db_cursor() as local:
@@ -173,6 +214,8 @@ def _sync_local_users(cursor) -> None:
             "SELECT id, username, display_name, role, department FROM users ORDER BY id ASC"
         ).fetchall()
     for user in users:
+        if str(user["username"]) in {"legal", "business"}:
+            continue
         defaults = json.dumps(new_user_permissions(), ensure_ascii=False)
         cursor.execute(
             f"""
@@ -558,6 +601,220 @@ def update_user_permission(
             connection.close()
     clear_permission_cache()
     return _row_to_record(row)
+
+
+def _select_permission_request(cursor, request_id: int) -> dict | None:
+    table = _request_table()
+    cursor.execute(
+        f"""
+        SELECT `id`, `oa_user_id`, `username`, `display_name`, `permissions_json`,
+               `reason`, `status`, `reviewer_id`, `reviewer_name`, `review_comment`,
+               `reviewed_at`, `created_at`, `updated_at`
+          FROM {table}
+         WHERE `id` = %s
+        """,
+        (request_id,),
+    )
+    return cursor.fetchone()
+
+
+def _permission_request_record(row: dict) -> dict:
+    reviewed_at = row.get("reviewed_at")
+    created_at = row.get("created_at")
+    updated_at = row.get("updated_at")
+    for key in ("reviewed_at", "created_at", "updated_at"):
+        value = row.get(key)
+        if isinstance(value, datetime):
+            row = {**row, key: value.isoformat(timespec="seconds")}
+    return {
+        "id": int(row["id"]),
+        "oa_user_id": int(row["oa_user_id"]),
+        "username": str(row.get("username") or ""),
+        "display_name": str(row.get("display_name") or ""),
+        "permissions": list(_load_permissions_json(row.get("permissions_json"))),
+        "reason": str(row.get("reason") or ""),
+        "status": str(row.get("status") or "pending"),
+        "reviewer_id": int(row["reviewer_id"]) if row.get("reviewer_id") is not None else None,
+        "reviewer_name": str(row.get("reviewer_name") or ""),
+        "review_comment": str(row.get("review_comment") or ""),
+        "reviewed_at": row.get("reviewed_at") or "",
+        "created_at": row.get("created_at") or "",
+        "updated_at": row.get("updated_at") or "",
+    }
+
+
+def create_permission_request(
+    user: dict,
+    *,
+    permissions: list[str],
+    reason: str,
+) -> dict:
+    normalized = _normalize_permission_keys(permissions)
+    if not normalized:
+        raise UserPermissionValidationError("请至少选择一个申请开通的权限")
+    reason_value = (reason or "").strip()
+    if not reason_value:
+        raise UserPermissionValidationError("请填写开通事由")
+    granted = set(user.get("permissions") or [])
+    if all(key in granted for key in normalized):
+        raise UserPermissionValidationError("所选权限均已开通，无需重复申请")
+
+    table = _request_table()
+    connection = None
+    try:
+        connection = _connect()
+        with connection.cursor() as cursor:
+            _ensure_request_table(cursor)
+            cursor.execute(
+                f"""
+                SELECT `permissions_json`
+                  FROM {table}
+                 WHERE `oa_user_id` = %s AND `status` = 'pending'
+                """,
+                (user["id"],),
+            )
+            pending_keys: set[str] = set()
+            for row in cursor.fetchall():
+                pending_keys.update(_load_permissions_json(row.get("permissions_json")))
+            duplicate = pending_keys.intersection(normalized)
+            if duplicate:
+                raise UserPermissionConflict("所选权限已有待审批申请，请勿重复提交")
+            cursor.execute(
+                f"""
+                INSERT INTO {table} (
+                    `oa_user_id`, `username`, `display_name`,
+                    `permissions_json`, `reason`, `status`
+                ) VALUES (%s, %s, %s, %s, %s, 'pending')
+                """,
+                (
+                    user["id"],
+                    str(user.get("username") or ""),
+                    str(user.get("display_name") or ""),
+                    json.dumps(normalized, ensure_ascii=False),
+                    reason_value,
+                ),
+            )
+            row = _select_permission_request(cursor, int(cursor.lastrowid))
+    except (UserPermissionConflict, UserPermissionValidationError):
+        raise
+    except pymysql.MySQLError as exc:
+        raise UserPermissionError("权限申请提交失败，请稍后重试") from exc
+    finally:
+        if connection is not None:
+            connection.close()
+    return _permission_request_record(row)
+
+
+def list_permission_requests(user: dict) -> list[dict]:
+    table = _request_table()
+    connection = None
+    try:
+        connection = _connect()
+        with connection.cursor() as cursor:
+            _ensure_request_table(cursor)
+            where = ""
+            params: tuple = ()
+            if user.get("role") != "admin":
+                where = "WHERE `oa_user_id` = %s"
+                params = (user["id"],)
+            cursor.execute(
+                f"""
+                SELECT `id`, `oa_user_id`, `username`, `display_name`, `permissions_json`,
+                       `reason`, `status`, `reviewer_id`, `reviewer_name`, `review_comment`,
+                       `reviewed_at`, `created_at`, `updated_at`
+                  FROM {table}
+                  {where}
+                 ORDER BY FIELD(`status`, 'pending', 'approved', 'rejected'), `id` DESC
+                 LIMIT 300
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+    except pymysql.MySQLError as exc:
+        raise UserPermissionError("权限申请列表加载失败，请稍后重试") from exc
+    finally:
+        if connection is not None:
+            connection.close()
+    return [_permission_request_record(row) for row in rows]
+
+
+def review_permission_request(
+    request_id: int,
+    reviewer: dict,
+    *,
+    decision: str,
+    comment: str = "",
+) -> dict:
+    if decision not in {"approve", "reject"}:
+        raise UserPermissionValidationError("审批结果不正确")
+    request_table = _request_table()
+    permission_table = _full_table()
+    connection = None
+    try:
+        connection = _connect()
+        with connection.cursor() as cursor:
+            _ensure_request_table(cursor)
+            _ensure_table(cursor)
+            request_row = _select_permission_request(cursor, request_id)
+            if not request_row:
+                raise UserPermissionNotFound("权限申请不存在")
+            if str(request_row.get("status")) != "pending":
+                raise UserPermissionConflict("该权限申请已处理")
+            if int(request_row["oa_user_id"]) == int(reviewer["id"]):
+                raise UserPermissionConflict("不能审批本人提交的权限申请")
+            if decision == "approve":
+                cursor.execute(
+                    f"""
+                    SELECT `id`, `permissions_json`
+                      FROM {permission_table}
+                     WHERE `oa_user_id` = %s OR `username` = %s
+                     LIMIT 1
+                    """,
+                    (request_row["oa_user_id"], request_row.get("username") or ""),
+                )
+                target = cursor.fetchone()
+                if not target:
+                    raise UserPermissionNotFound("申请人的权限记录不存在")
+                merged = set(_load_permissions_json(target.get("permissions_json")))
+                merged.update(_load_permissions_json(request_row.get("permissions_json")))
+                normalized = tuple(sorted(merged, key=MODULE_ORDER.get))
+                cursor.execute(
+                    f"""
+                    UPDATE {permission_table}
+                       SET `permissions_json` = %s
+                     WHERE `id` = %s
+                    """,
+                    (json.dumps(normalized, ensure_ascii=False), target["id"]),
+                )
+            cursor.execute(
+                f"""
+                UPDATE {request_table}
+                   SET `status` = %s,
+                       `reviewer_id` = %s,
+                       `reviewer_name` = %s,
+                       `review_comment` = %s,
+                       `reviewed_at` = %s
+                 WHERE `id` = %s
+                """,
+                (
+                    "approved" if decision == "approve" else "rejected",
+                    reviewer["id"],
+                    str(reviewer.get("display_name") or ""),
+                    (comment or "").strip(),
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    request_id,
+                ),
+            )
+            row = _select_permission_request(cursor, request_id)
+    except (UserPermissionConflict, UserPermissionNotFound, UserPermissionValidationError):
+        raise
+    except pymysql.MySQLError as exc:
+        raise UserPermissionError("权限申请审批失败，请稍后重试") from exc
+    finally:
+        if connection is not None:
+            connection.close()
+    clear_permission_cache()
+    return _permission_request_record(row)
 
 
 def _fallback_access_profile(user: dict, *, default_permissions: bool) -> dict[str, Any]:

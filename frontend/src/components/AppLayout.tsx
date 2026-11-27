@@ -3,6 +3,7 @@ import {
   BellOutlined,
   DashboardOutlined,
   FileProtectOutlined,
+  FormOutlined,
   FileTextOutlined,
   LinkOutlined,
   LogoutOutlined,
@@ -34,6 +35,7 @@ const PAGE_NAMES: Record<string, string> = {
   "/reviews": "合同管理 / 审核工作台",
   "/templates": "合同管理 / 合同模板",
   "/bundle-rules": "合同管理 / 合同包规则",
+  "/permission-requests": "系统管理 / 权限申请",
   "/admin/permissions": "系统管理 / 权限管理",
 };
 
@@ -42,6 +44,7 @@ function modulePathFor(pathname: string): string {
   if (pathname.startsWith("/reviews")) return "/reviews";
   if (pathname.startsWith("/templates")) return "/templates";
   if (pathname.startsWith("/bundle-rules")) return "/bundle-rules";
+  if (pathname.startsWith("/permission-requests")) return "/permission-requests";
   if (pathname.startsWith("/party-a")) return "/party-a";
   if (pathname.startsWith("/parties")) return "/parties";
   if (pathname.startsWith("/contracts")) return "/contracts";
@@ -156,18 +159,26 @@ export function AppLayout() {
       });
     }
 
+    const systemChildren: NonNullable<MenuProps["items"]> = [
+      {
+        key: "/permission-requests",
+        icon: <FormOutlined />,
+        label: "权限申请",
+      },
+    ];
     if (user?.role === "admin") {
+      systemChildren.push({
+        key: "/admin/permissions",
+        icon: <SafetyCertificateOutlined />,
+        label: "权限管理",
+      });
+    }
+    if (systemChildren.length) {
       items.push({
         key: "system-management",
         icon: <SettingOutlined />,
         label: "系统管理",
-        children: [
-          {
-            key: "/admin/permissions",
-            icon: <SafetyCertificateOutlined />,
-            label: "权限管理",
-          },
-        ],
+        children: systemChildren,
       });
     }
     return items;

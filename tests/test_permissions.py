@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from backend import security, user_permissions
@@ -61,6 +63,38 @@ class _RecordingCursor:
 
     def execute(self, statement, *_args, **_kwargs):
         self.statements.append(statement)
+
+
+class _FakeReviewCursor:
+    def __init__(self, rows):
+        self.rows = list(rows)
+        self.calls: list[tuple[str, tuple]] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def execute(self, statement, params=()):
+        self.calls.append((statement, tuple(params or ())))
+
+    def fetchone(self):
+        return self.rows.pop(0) if self.rows else None
+
+    def fetchall(self):
+        return []
+
+
+class _FakeReviewConnection:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def cursor(self):
+        return self._cursor
+
+    def close(self):
+        return None
 
 
 def test_login_returns_module_permissions(client, login_as):
@@ -151,7 +185,7 @@ def test_local_user_sync_does_not_overwrite_remote_role(monkeypatch):
             [
                 {
                     "id": 3,
-                    "username": "business",
+                    "username": "feishu_user",
                     "display_name": "本地业务人员",
                     "role": "business",
                     "department": "商务拓展部",
@@ -167,6 +201,36 @@ def test_local_user_sync_does_not_overwrite_remote_role(monkeypatch):
     update_clause = cursor.statements[0].split("ON DUPLICATE KEY UPDATE", 1)[1]
     assert "`role`" not in update_clause
     assert "`permissions_json`" not in update_clause
+
+
+def test_local_user_sync_skips_legacy_demo_accounts(monkeypatch):
+    monkeypatch.setattr(
+        user_permissions,
+        "db_cursor",
+        lambda: _FakeLocalConnection(
+            [
+                {
+                    "id": 2,
+                    "username": "legal",
+                    "display_name": "林静",
+                    "role": "legal",
+                    "department": "法务合规部",
+                },
+                {
+                    "id": 3,
+                    "username": "business",
+                    "display_name": "陈晨",
+                    "role": "business",
+                    "department": "商务拓展部",
+                },
+            ]
+        ),
+    )
+    cursor = _RecordingCursor()
+
+    user_permissions._sync_local_users(cursor)
+
+    assert cursor.statements == []
 
 
 def test_permission_role_change_is_not_hidden_by_default_cache(monkeypatch):
@@ -294,6 +358,143 @@ def test_permission_management_endpoints(client, login_as, monkeypatch):
         "union_id": "on_123",
     }
     assert updated.json()["union_id"] == "on_123"
+
+
+def test_permission_request_endpoints(client, login_as, monkeypatch):
+    record = {
+        "id": 12,
+        "oa_user_id": 3,
+        "username": "business",
+        "display_name": "陈晨",
+        "permissions": ["reviews", "parties"],
+        "reason": "需要处理合同审核和主体维护",
+        "status": "pending",
+        "reviewer_id": None,
+        "reviewer_name": "",
+        "review_comment": "",
+        "reviewed_at": "",
+        "created_at": "2026-11-27T09:00:00",
+        "updated_at": "2026-11-27T09:00:00",
+    }
+    monkeypatch.setattr(
+        user_permissions,
+        "list_permission_requests",
+        lambda _user: [record],
+    )
+    captured: dict = {}
+
+    def fake_create(user, *, permissions, reason):
+        captured.update({"user": user["username"], "permissions": permissions, "reason": reason})
+        return {**record, "permissions": permissions, "reason": reason}
+
+    def fake_review(request_id, reviewer, *, decision, comment):
+        captured.update(
+            {
+                "request_id": request_id,
+                "reviewer": reviewer["username"],
+                "decision": decision,
+                "comment": comment,
+            }
+        )
+        return {**record, "status": "approved", "reviewer_name": reviewer["display_name"]}
+
+    monkeypatch.setattr(user_permissions, "create_permission_request", fake_create)
+    monkeypatch.setattr(user_permissions, "review_permission_request", fake_review)
+
+    login_as(client, "business", "Business@123")
+    listed = client.get("/api/permission-requests")
+    assert listed.status_code == 200
+    assert listed.json()["can_approve"] is False
+    assert listed.json()["items"] == [record]
+
+    created = client.post(
+        "/api/permission-requests",
+        json={"permissions": ["reviews", "parties"], "reason": record["reason"]},
+    )
+    assert created.status_code == 201, created.text
+    assert captured["permissions"] == ["reviews", "parties"]
+    assert captured["reason"] == record["reason"]
+
+    forbidden = client.post(
+        "/api/permission-requests/12/review",
+        json={"decision": "approve", "comment": "同意"},
+    )
+    assert forbidden.status_code == 403
+
+    captured.clear()
+    login_as(client, "admin", "Admin@123")
+    admin_list = client.get("/api/permission-requests")
+    assert admin_list.status_code == 200
+    assert admin_list.json()["can_approve"] is True
+    approved = client.post(
+        "/api/permission-requests/12/review",
+        json={"decision": "approve", "comment": "同意开通"},
+    )
+    assert approved.status_code == 200, approved.text
+    assert captured == {
+        "request_id": 12,
+        "reviewer": "admin",
+        "decision": "approve",
+        "comment": "同意开通",
+    }
+
+
+def test_permission_request_approval_merges_existing_permissions(monkeypatch):
+    request_row = {
+        "id": 12,
+        "oa_user_id": 3,
+        "username": "business",
+        "display_name": "陈晨",
+        "permissions_json": '["reviews", "parties"]',
+        "reason": "需要处理合同审核和主体维护",
+        "status": "pending",
+        "reviewer_id": None,
+        "reviewer_name": "",
+        "review_comment": "",
+        "reviewed_at": None,
+        "created_at": "2026-11-27 09:00:00",
+        "updated_at": "2026-11-27 09:00:00",
+    }
+    updated_request = {
+        **request_row,
+        "status": "approved",
+        "reviewer_id": 1,
+        "reviewer_name": "系统管理员",
+        "review_comment": "同意开通",
+    }
+    target_permission = {
+        "id": 7,
+        "permissions_json": '["dashboard", "contracts"]',
+    }
+    cursor = _FakeReviewCursor([request_row, target_permission, updated_request])
+    monkeypatch.setattr(user_permissions, "_TABLE_READY", True)
+    monkeypatch.setattr(user_permissions, "_REQUEST_TABLE_READY", True)
+    monkeypatch.setattr(
+        user_permissions,
+        "_connect",
+        lambda: _FakeReviewConnection(cursor),
+    )
+
+    result = user_permissions.review_permission_request(
+        12,
+        {"id": 1, "username": "admin", "display_name": "系统管理员"},
+        decision="approve",
+        comment="同意开通",
+    )
+
+    permission_updates = [
+        params
+        for statement, params in cursor.calls
+        if "UPDATE" in statement
+        and "permissions_json" in statement
+        and params
+        and str(params[0]).startswith("[")
+    ]
+    assert permission_updates
+    merged = set(json.loads(permission_updates[0][0]))
+    assert merged == {"dashboard", "contracts", "reviews", "parties"}
+    assert result["status"] == "approved"
+    assert result["reviewer_name"] == "系统管理员"
 
 
 def test_permission_values_are_validated(monkeypatch):

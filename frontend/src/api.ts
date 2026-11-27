@@ -12,6 +12,7 @@ import type {
   PartyInfo,
   PermissionKey,
   PermissionModule,
+  PermissionRequestRecord,
   Template,
   TemplateImportDraft,
   TemplatePayload,
@@ -112,6 +113,26 @@ export const api = {
   ) =>
     request<UserPermissionRecord>(`/admin/permissions/${id}`, {
       method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
+  permissionRequests: () =>
+    request<{
+      items: PermissionRequestRecord[];
+      modules: PermissionModule[];
+      can_approve: boolean;
+    }>("/permission-requests"),
+  createPermissionRequest: (payload: { permissions: PermissionKey[]; reason: string }) =>
+    request<PermissionRequestRecord>("/permission-requests", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  reviewPermissionRequest: (
+    id: number,
+    payload: { decision: "approve" | "reject"; comment: string },
+  ) =>
+    request<PermissionRequestRecord>(`/permission-requests/${id}/review`, {
+      method: "POST",
       body: JSON.stringify(payload),
     }),
 

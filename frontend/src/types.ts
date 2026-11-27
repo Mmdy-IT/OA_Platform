@@ -39,6 +39,22 @@ export interface UserPermissionRecord {
   updated_at: string;
 }
 
+export interface PermissionRequestRecord {
+  id: number;
+  oa_user_id: number;
+  username: string;
+  display_name: string;
+  permissions: PermissionKey[];
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  reviewer_id: number | null;
+  reviewer_name: string;
+  review_comment: string;
+  reviewed_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export type TemplateFieldType =
   | "text"
   | "textarea"

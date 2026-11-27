@@ -42,6 +42,8 @@ from .schemas import (
     BundleRulePayload,
     LoginRequest,
     PartyCreate,
+    PermissionRequestCreate,
+    PermissionRequestReview,
     PermissionUpdate,
     ReviewRequest,
     TemplatePayload,
@@ -2012,6 +2014,61 @@ def list_permission_records(_user: dict = Depends(require_roles("admin"))):
     except user_permissions.UserPermissionError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {"modules": user_permissions.MODULES, "items": items}
+
+
+@app.get("/api/permission-requests")
+def list_permission_requests(user: dict = Depends(get_current_user)):
+    try:
+        items = user_permissions.list_permission_requests(user)
+    except user_permissions.UserPermissionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {
+        "items": items,
+        "modules": user_permissions.MODULES,
+        "can_approve": user.get("role") == "admin",
+    }
+
+
+@app.post("/api/permission-requests", status_code=status.HTTP_201_CREATED)
+def create_permission_request(
+    payload: PermissionRequestCreate,
+    user: dict = Depends(get_current_user),
+):
+    try:
+        return user_permissions.create_permission_request(
+            user,
+            permissions=payload.permissions,
+            reason=payload.reason,
+        )
+    except user_permissions.UserPermissionValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except user_permissions.UserPermissionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except user_permissions.UserPermissionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/permission-requests/{request_id}/review")
+def review_permission_request(
+    request_id: int,
+    payload: PermissionRequestReview,
+    reviewer: dict = Depends(require_roles("admin")),
+):
+    try:
+        return user_permissions.review_permission_request(
+            request_id,
+            reviewer,
+            decision=payload.decision,
+            comment=payload.comment,
+        )
+    except user_permissions.UserPermissionValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except user_permissions.UserPermissionNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except user_permissions.UserPermissionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except user_permissions.UserPermissionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.put("/api/admin/permissions/{record_id}")

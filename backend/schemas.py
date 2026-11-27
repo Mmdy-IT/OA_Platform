@@ -186,6 +186,29 @@ class PermissionUpdate(BaseModel):
         return value.strip()
 
 
+class PermissionRequestCreate(BaseModel):
+    permissions: list[str] = Field(min_length=1, max_length=20)
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def strip_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("请填写开通事由")
+        return value
+
+
+class PermissionRequestReview(BaseModel):
+    decision: Literal["approve", "reject"]
+    comment: str = Field(default="", max_length=1000)
+
+    @field_validator("comment")
+    @classmethod
+    def strip_comment(cls, value: str) -> str:
+        return value.strip()
+
+
 class PartyCreate(BaseModel):
     party_type: Literal["甲方", "乙方"] = "乙方"
     party_no: str = Field(default="", max_length=20)
