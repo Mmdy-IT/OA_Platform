@@ -3447,16 +3447,56 @@ button.template-card:hover {
   display: grid;
   grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.6fr);
   gap: 18px;
-  align-items: start;
+  min-height: 0;
+  flex: 1;
+  align-items: stretch;
+}
+
+.permission-request-page {
+  height: calc(100vh - 154px);
+  min-height: 560px;
+  overflow: hidden;
 }
 
 .permission-request-form,
 .permission-request-list {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  flex-direction: column;
   padding: 22px;
 }
 
+.permission-request-form .panel-head,
+.permission-request-list .panel-head {
+  flex: 0 0 auto;
+  margin-bottom: 16px;
+}
+
 .permission-request-form .ant-alert {
-  margin: 16px 0;
+  flex: 0 0 auto;
+  margin: 0 0 12px;
+}
+
+.permission-request-module-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 7px;
+  scrollbar-width: thin;
+}
+
+.permission-request-module-scroll::-webkit-scrollbar,
+.permission-request-list .ant-table-body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.permission-request-module-scroll::-webkit-scrollbar-thumb,
+.permission-request-list .ant-table-body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #c9d5e5;
 }
 
 .permission-request-form .permission-module-group {
@@ -3464,6 +3504,7 @@ button.template-card:hover {
 }
 
 .permission-request-form .permission-editor-section {
+  flex: 0 0 auto;
   margin: 18px 0;
 }
 
@@ -3511,6 +3552,36 @@ button.template-card:hover {
   gap: 2px;
 }
 
+.permission-request-list .ant-table-wrapper {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.permission-request-list .ant-spin-nested-loading,
+.permission-request-list .ant-spin-container {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.permission-request-list .ant-table {
+  flex: 1;
+  min-height: 0;
+}
+
+.permission-request-list .ant-table-body {
+  overflow-y: auto !important;
+  scrollbar-width: thin;
+}
+
+.permission-request-list .ant-pagination {
+  flex: 0 0 auto;
+  margin: 14px 0 0 !important;
+}
+
 .permission-review-modal p {
   margin: 0 0 10px;
   line-height: 1.7;
@@ -3519,6 +3590,22 @@ button.template-card:hover {
 @media (max-width: 1180px) {
   .permission-request-layout {
     grid-template-columns: 1fr;
+  }
+
+  .permission-request-page {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .permission-request-form,
+  .permission-request-list {
+    height: auto;
+    max-height: none;
+  }
+
+  .permission-request-module-scroll {
+    max-height: 420px;
   }
 }
 

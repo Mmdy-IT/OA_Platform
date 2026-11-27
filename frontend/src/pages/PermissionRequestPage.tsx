@@ -238,7 +238,7 @@ export function PermissionRequestPage() {
   ];
 
   return (
-    <div className="page-stack">
+    <div className="page-stack permission-request-page">
       <PageHeader
         eyebrow="PERMISSION REQUESTS"
         title="权限申请"
@@ -260,15 +260,16 @@ export function PermissionRequestPage() {
             message="已开通的权限不可重复选择"
             description="请只勾选当前尚未开通、且因工作需要必须使用的子模块。"
           />
-          {groups.map((group) => {
+          <div className="permission-request-module-scroll">
+            {groups.map((group) => {
             const availableKeys = group.modules
               .map((module) => module.key)
               .filter((key) => !granted.has(key));
             const selectedCount = availableKeys.filter((key) => selected.includes(key)).length;
             const allSelected = availableKeys.length > 0 && selectedCount === availableKeys.length;
             const partiallySelected = selectedCount > 0 && !allSelected;
-            return (
-              <div className="permission-module-group" key={group.name}>
+              return (
+                <div className="permission-module-group" key={group.name}>
                 <div className="permission-group-head">
                   <div className="permission-group-title">
                     <span className="permission-group-name">{group.name}</span>
@@ -307,9 +308,10 @@ export function PermissionRequestPage() {
                     </label>
                   );
                 })}
-              </div>
-            );
-          })}
+                </div>
+              );
+            })}
+          </div>
           <div className="permission-editor-section">
             <div className="permission-section-head">
               <strong>开通事由 <em>*</em></strong>
@@ -352,7 +354,7 @@ export function PermissionRequestPage() {
             columns={columns}
             dataSource={items}
             pagination={{ pageSize: 10, showSizeChanger: false }}
-            scroll={{ x: 980 }}
+            scroll={{ x: 980, y: "calc(100vh - 390px)" }}
             locale={{ emptyText: "暂无权限申请" }}
           />
         </div>
