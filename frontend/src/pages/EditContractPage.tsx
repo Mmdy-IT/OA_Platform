@@ -133,7 +133,7 @@ export function EditContractPage() {
         initialTableAdjustments={contract.table_adjustments}
         contractNo={contract.contract_no}
         hideContractNumber={
-          contract.template_category === "通用" && !!contract.bundle_id
+          contract.template_category === "通用类" && !!contract.bundle_id
         }
         banner={
           contract.status === "rejected" && contract.review_comment ? (

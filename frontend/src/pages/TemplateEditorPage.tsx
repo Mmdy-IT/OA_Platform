@@ -25,7 +25,7 @@ import {
   Tag,
   message,
 } from "antd";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api";
@@ -58,7 +58,14 @@ import type {
 } from "../types";
 import { FIELD_TYPE_OPTIONS, fieldTypeLabel } from "../utils";
 
-const CATEGORIES = ["采购类", "服务类", "保密类", "劳动人事", "通用"];
+const DEFAULT_CATEGORIES = [
+  "采购类",
+  "服务类",
+  "保密类",
+  "劳动人事",
+  "通用",
+  "通用类",
+];
 
 function sanitizeFieldKey(value: string): string {
   const cleaned = value
@@ -109,6 +116,7 @@ export function TemplateEditorPage() {
   const location = useLocation();
   const isEdit = !!id;
   const editorRef = useRef<Editor | null>(null);
+  const fieldListRef = useRef<HTMLDivElement>(null);
   const importDraft = (location.state as { importDraft?: TemplateImportDraft } | null)?.importDraft;
   const [loading, setLoading] = useState(isEdit);
   const [error, setError] = useState("");
@@ -118,6 +126,7 @@ export function TemplateEditorPage() {
   const [templateStatus, setTemplateStatus] = useState<"active" | "archived">("active");
   const [name, setName] = useState("");
   const [category, setCategory] = useState("通用");
+  const [storedCategories, setStoredCategories] = useState<string[]>([]);
   const [version, setVersion] = useState("V1.0");
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
@@ -125,6 +134,29 @@ export function TemplateEditorPage() {
   const [fields, setFields] = useState<TemplateField[]>(() => ensureSystemPartyFields([]));
   const [importSource, setImportSource] = useState<TemplateImportDraft["source"] | null>(
     importDraft?.source ?? null,
+  );
+
+  useEffect(() => {
+    let active = true;
+    api
+      .templateCategories()
+      .then((result) => {
+        if (active) setStoredCategories(result.items);
+      })
+      .catch(() => {
+        if (active) setStoredCategories([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const categoryOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([...DEFAULT_CATEGORIES, category, ...storedCategories].filter(Boolean)),
+      ),
+    [category, storedCategories],
   );
 
   useEffect(() => {
@@ -176,9 +208,21 @@ export function TemplateEditorPage() {
   const unusedFields = fields.filter(
     (field) => !isSystemPartyField(field) && !placeholderKeys.includes(field.key),
   );
+  const visibleFieldEntries = useMemo(
+    () =>
+      fields
+        .map((field, index) => ({ field, index }))
+        .filter(({ field }) => !isSystemPartyField(field)),
+    [fields],
+  );
   const duplicateKeys = fieldKeys.filter((key, index) => key && fieldKeys.indexOf(key) !== index);
   const invalidKeys = fields.filter((field) => !FIELD_KEY_RE.test(field.key)).map((field) => field.label || field.key);
   const reservedFields = fields.filter((field) => isSystemPlaceholderKey(field.key));
+
+  useLayoutEffect(() => {
+    const container = fieldListRef.current?.querySelector<HTMLElement>(".field-collapse");
+    if (container) container.scrollTop = container.scrollHeight;
+  }, [visibleFieldEntries.length]);
 
   const updateField = (index: number, patch: Partial<TemplateField>) => {
     setFields((current) =>
@@ -401,7 +445,7 @@ export function TemplateEditorPage() {
               popupClassName="template-category-dropdown"
               value={category}
               onChange={setCategory}
-              options={CATEGORIES.map((item) => ({ value: item }))}
+              options={categoryOptions.map((item) => ({ value: item }))}
               placeholder="例如：采购类"
               filterOption={(input, option) => (option?.value || "").toLowerCase().includes(input.toLowerCase())}
             />
@@ -509,39 +553,41 @@ export function TemplateEditorPage() {
               每个空白项对应业务表单中的一个输入控件，并可单独设置填写要求。甲方、乙方主体信息由系统自动生成，选择主体名称后会带出信用代码、地址、开户行等信息；联系人和联系方式由业务人员手动填写。
             </p>
 
-            {fields.length ? (
-              <Collapse
-                activeKey={activeFields}
-                onChange={(keys) => setActiveFields(keys as string[])}
-                className="field-collapse"
-                items={fields.map((field, index) => ({
-                  key: String(index),
-                  label: (
-                    <div className="field-collapse-label">
-                      <span className="field-order">{String(index + 1).padStart(2, "0")}</span>
-                      <strong>{field.label || "未命名空白项"}</strong>
-                      <code>{'{{'}{field.key}{'}}'}</code>
-                      {field.required && <Tag color="red" bordered={false}>必填</Tag>}
-                      {isSystemPartyField(field) ? (
-                        <Tag color="gold" bordered={false}>系统生成</Tag>
-                      ) : resolveAutoFill(field) ? (
-                        <Tag color="blue" bordered={false}>
-                          {resolveAutoFill(field).startsWith("warehouse_") ? "仓库" : "主体库"}
-                        </Tag>
-                      ) : null}
-                      <span className="field-type-mini">{fieldTypeLabel(field.type)}</span>
-                    </div>
-                  ),
-                  children: (
-                    <FieldConfig
-                      field={field}
-                      onChange={(patch) => updateField(index, patch)}
-                      onInsert={() => insertPlaceholder(field)}
-                      onRemove={() => removeField(index)}
-                    />
-                  ),
-                }))}
-              />
+            {visibleFieldEntries.length ? (
+              <div ref={fieldListRef}>
+                <Collapse
+                  activeKey={activeFields}
+                  onChange={(keys) => setActiveFields(keys as string[])}
+                  className="field-collapse"
+                  items={visibleFieldEntries.map(({ field, index }, visibleIndex) => ({
+                    key: String(index),
+                    label: (
+                      <div className="field-collapse-label">
+                        <span className="field-order">
+                          {String(visibleIndex + 1).padStart(2, "0")}
+                        </span>
+                        <strong>{field.label || "未命名空白项"}</strong>
+                        <code>{'{{'}{field.key}{'}}'}</code>
+                        {field.required && <Tag color="red" bordered={false}>必填</Tag>}
+                        {resolveAutoFill(field) ? (
+                          <Tag color="blue" bordered={false}>
+                            {resolveAutoFill(field).startsWith("warehouse_") ? "仓库" : "主体库"}
+                          </Tag>
+                        ) : null}
+                        <span className="field-type-mini">{fieldTypeLabel(field.type)}</span>
+                      </div>
+                    ),
+                    children: (
+                      <FieldConfig
+                        field={field}
+                        onChange={(patch) => updateField(index, patch)}
+                        onInsert={() => insertPlaceholder(field)}
+                        onRemove={() => removeField(index)}
+                      />
+                    ),
+                  }))}
+                />
+              </div>
             ) : (
               <div className="fields-empty">
                 <FileProtectOutlined />

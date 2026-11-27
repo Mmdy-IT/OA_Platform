@@ -216,7 +216,7 @@ def _contract_document_values(contract: dict) -> dict[str, str]:
     values = _format_field_values(fields, values)
     values[CONTRACT_NUMBER_PLACEHOLDER] = (
         "\u200b"
-        if contract.get("template_category") == "通用" and contract.get("bundle_id")
+        if contract.get("template_category") == "通用类" and contract.get("bundle_id")
         else str(contract.get("contract_no") or "").strip()
     )
     return values

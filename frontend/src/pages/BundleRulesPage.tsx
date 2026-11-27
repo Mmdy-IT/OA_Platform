@@ -189,7 +189,7 @@ export function BundleRulesPage() {
               showSearch
               optionFilterProp="label"
               options={templates
-                .filter((item) => item.category !== "通用")
+                .filter((item) => item.category !== "通用类")
                 .map((item) => ({ label: item.name, value: item.id }))}
             />
           </Form.Item>
@@ -202,7 +202,7 @@ export function BundleRulesPage() {
               showSearch
               optionFilterProp="label"
               options={templates
-                .filter((item) => item.category === "通用")
+                .filter((item) => item.category === "通用类")
                 .map((item) => ({ label: item.name, value: item.id }))}
             />
           </Form.Item>

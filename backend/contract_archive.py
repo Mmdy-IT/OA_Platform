@@ -73,6 +73,12 @@ def _ensure_columns(cursor, table: str) -> None:
             "ADD COLUMN `contract_status` VARCHAR(20) NOT NULL DEFAULT '草稿' "
             "COMMENT '合同状态：草稿/待审核/已驳回/已通过' AFTER `contract_name`"
         )
+    if "contract_category" not in columns:
+        cursor.execute(
+            f"ALTER TABLE {table} "
+            "ADD COLUMN `contract_category` VARCHAR(40) NOT NULL DEFAULT '' "
+            "COMMENT '合同分类' AFTER `template_version`"
+        )
 
     cursor.execute(f"SHOW INDEX FROM {table}")
     indexes = {str(row.get("Key_name", "")) for row in cursor.fetchall()}
@@ -93,6 +99,7 @@ def sync_contract_record(
     approver_name: str,
     template_name: str,
     template_version: str,
+    contract_category: str,
     review_comment: str,
     approved_at: str | None,
 ) -> None:
@@ -113,6 +120,7 @@ def sync_contract_record(
           `approver_name` VARCHAR(100) NOT NULL COMMENT '审批人',
           `template_name` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '合同模板',
           `template_version` VARCHAR(32) NOT NULL DEFAULT '' COMMENT '模板版本',
+          `contract_category` VARCHAR(40) NOT NULL DEFAULT '' COMMENT '合同分类',
           `review_comment` TEXT NULL COMMENT '审核意见',
           `approved_at` DATETIME NULL COMMENT '审核通过时间',
           `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -129,8 +137,8 @@ def sync_contract_record(
         INSERT INTO {table} (
             `oa_contract_id`, `contract_no`, `contract_code`, `serial_no`, `contract_name`,
             `contract_status`, `initiator_name`, `approver_name`, `template_name`,
-            `template_version`, `review_comment`, `approved_at`
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            `template_version`, `contract_category`, `review_comment`, `approved_at`
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE
             `contract_no` = VALUES(`contract_no`),
             `contract_code` = VALUES(`contract_code`),
@@ -141,6 +149,7 @@ def sync_contract_record(
             `approver_name` = VALUES(`approver_name`),
             `template_name` = VALUES(`template_name`),
             `template_version` = VALUES(`template_version`),
+            `contract_category` = VALUES(`contract_category`),
             `review_comment` = VALUES(`review_comment`),
             `approved_at` = VALUES(`approved_at`)
     """
@@ -163,6 +172,7 @@ def sync_contract_record(
                     approver_name,
                     template_name,
                     template_version,
+                    contract_category,
                     review_comment,
                     approved_value,
                 ),

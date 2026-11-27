@@ -19,6 +19,7 @@ const CATEGORY_TONES: Record<string, string> = {
   服务类: "blue",
   保密类: "violet",
   通用: "slate",
+  通用类: "slate",
 };
 
 export function NewContractPage() {
@@ -41,7 +42,7 @@ export function NewContractPage() {
       .then((result) => {
         if (!active) return;
         const selectableTemplates = result.items.filter(
-          (item) => item.category !== "通用",
+          (item) => item.category !== "通用类",
         );
         setTemplates(selectableTemplates);
         const requested = Number(searchParams.get("template"));

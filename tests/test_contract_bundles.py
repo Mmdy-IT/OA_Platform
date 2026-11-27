@@ -10,7 +10,7 @@ def create_general_template(client, login_as) -> dict:
         json={
             "name": "合同包通用附件",
             "contract_code": "HT",
-            "category": "通用",
+            "category": "通用类",
             "description": "合同包配套通用合同",
             "instructions": "",
             "content": "<p>通用合同附件正文</p>",
@@ -24,7 +24,7 @@ def create_general_template(client, login_as) -> dict:
 def test_bundle_rule_and_automatic_companion_contract(client, login_as):
     login_as(client, "legal", "Legal@123")
     templates = client.get("/api/templates?status=active").json()["items"]
-    trigger = next(item for item in templates if item["category"] != "通用")
+    trigger = next(item for item in templates if item["category"] != "通用类")
     required = create_general_template(client, login_as)
     login_as(client, "legal", "Legal@123")
 
@@ -65,7 +65,7 @@ def test_bundle_rule_and_automatic_companion_contract(client, login_as):
     companion_id = contract["bundle"]["members"][1]["id"]
     companion = client.get(f"/api/contracts/{companion_id}").json()
     assert companion["title"] == "合同包自动配套测试·合同包通用附件"
-    assert companion["template_category"] == "通用"
+    assert companion["template_category"] == "通用类"
     assert companion["contract_no"] == ""
     assert companion["contract_code"] == contract["contract_code"]
 
@@ -73,7 +73,7 @@ def test_bundle_rule_and_automatic_companion_contract(client, login_as):
 def test_bundle_submit_requires_all_members_complete(client, login_as):
     login_as(client, "legal", "Legal@123")
     templates = client.get("/api/templates?status=active").json()["items"]
-    trigger = next(item for item in templates if item["category"] != "通用")
+    trigger = next(item for item in templates if item["category"] != "通用类")
     required = create_general_template(client, login_as)
     login_as(client, "legal", "Legal@123")
     assert client.post(
@@ -123,7 +123,7 @@ def test_general_template_cannot_be_used_as_standalone_contract(client, login_as
 def test_deleting_one_bundle_member_deletes_the_whole_package(client, login_as):
     login_as(client, "legal", "Legal@123")
     templates = client.get("/api/templates?status=active").json()["items"]
-    trigger = next(item for item in templates if item["category"] != "通用")
+    trigger = next(item for item in templates if item["category"] != "通用类")
     required = create_general_template(client, login_as)
     login_as(client, "legal", "Legal@123")
     assert client.post(
@@ -161,7 +161,7 @@ def test_deleting_one_bundle_member_deletes_the_whole_package(client, login_as):
 def test_main_contract_save_requires_general_companion(client, login_as):
     login_as(client, "legal", "Legal@123")
     templates = client.get("/api/templates?status=active").json()["items"]
-    trigger = next(item for item in templates if item["category"] != "通用")
+    trigger = next(item for item in templates if item["category"] != "通用类")
     required = create_general_template(client, login_as)
     login_as(client, "legal", "Legal@123")
     assert client.post(

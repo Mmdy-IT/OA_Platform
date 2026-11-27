@@ -181,6 +181,7 @@ def _sync_contract_archive(
     initiator_name: str,
     template_name: str,
     template_version: str,
+    contract_category: str,
     approver_name: str = "",
     review_comment: str = "",
     approved_at: str | None = None,
@@ -196,6 +197,7 @@ def _sync_contract_archive(
             approver_name=approver_name,
             template_name=template_name,
             template_version=template_version,
+            contract_category=contract_category,
             review_comment=review_comment,
             approved_at=approved_at,
         )
@@ -223,7 +225,7 @@ def _contract_summary(row) -> dict:
         "review_comment",
     )
     data = {key: row[key] for key in keys}
-    if data.get("template_category") == "通用" and data.get("bundle_id"):
+    if data.get("template_category") == "通用类" and data.get("bundle_id"):
         data["contract_no"] = ""
     return data
 
@@ -254,7 +256,7 @@ def _bundle_members(conn, bundle_id: int) -> list[dict]:
     return [
         {
             "id": row["id"],
-            "contract_no": "" if row["template_category"] == "通用" else row["contract_no"],
+            "contract_no": "" if row["template_category"] == "通用类" else row["contract_no"],
             "title": row["title"],
             "template_name": row["template_name"],
             "template_category": row["template_category"],
@@ -311,7 +313,7 @@ def _required_bundle_templates(conn, template_id: int) -> list[dict]:
          WHERE r.enabled = 1
            AND r.trigger_template_id = ?
            AND t.status = 'active'
-           AND t.category = '通用'
+           AND t.category = '通用类'
          ORDER BY r.id ASC
         """,
         (template_id,),
@@ -462,6 +464,7 @@ def _insert_contract_record(
         initiator_name=user["display_name"],
         template_name=template_row["name"],
         template_version=template_row["version"],
+        contract_category=template_row["category"],
     )
     return contract_id
 
@@ -540,6 +543,7 @@ def _submit_bundle(conn, row, user: dict) -> dict:
             initiator_name=member["creator_name"],
             template_name=member["template_name"],
             template_version=member["template_version"],
+            contract_category=member["template_category"],
         )
 
     conn.execute(
@@ -563,13 +567,13 @@ def _bundle_rule_dict(row) -> dict:
 
 
 def _sync_bundle_titles(conn, row, primary_title: str) -> None:
-    if not row["bundle_id"] or row["template_category"] == "通用":
+    if not row["bundle_id"] or row["template_category"] == "通用类":
         return
     members = conn.execute(
         """
         SELECT id, template_name
           FROM contracts
-         WHERE bundle_id = ? AND template_category = '通用'
+         WHERE bundle_id = ? AND template_category = '通用类'
         """,
         (row["bundle_id"],),
     ).fetchall()
@@ -583,7 +587,7 @@ def _sync_bundle_titles(conn, row, primary_title: str) -> None:
 
 
 def _ensure_bundle_companion(conn, row) -> None:
-    if not row["bundle_id"] or row["template_category"] == "通用":
+    if not row["bundle_id"] or row["template_category"] == "通用类":
         return
     required_ids = {
         int(item["required_template_id"])
@@ -604,7 +608,7 @@ def _ensure_bundle_companion(conn, row) -> None:
               FROM contracts
              WHERE bundle_id = ?
                AND contract_code = ?
-               AND template_category = '通用'
+               AND template_category = '通用类'
             """,
             (row["bundle_id"], row["contract_code"]),
         ).fetchall()
@@ -1116,6 +1120,22 @@ def list_templates(
     return {"items": [_template_dict(row) for row in rows], "total": len(rows)}
 
 
+@app.get("/api/template-categories")
+def template_categories(
+    _user: dict = Depends(require_permission("contracts", "templates")),
+):
+    with db_cursor() as conn:
+        rows = conn.execute(
+            """
+            SELECT category AS value FROM templates WHERE TRIM(category) <> ''
+            UNION
+            SELECT template_category AS value FROM contracts WHERE TRIM(template_category) <> ''
+            ORDER BY value ASC
+            """
+        ).fetchall()
+    return {"items": [str(row["value"]).strip() for row in rows if str(row["value"]).strip()]}
+
+
 @app.post("/api/templates/import")
 async def import_template(
     file: UploadFile = File(...),
@@ -1354,9 +1374,9 @@ def create_bundle_rule(
         if len(template_map) != 2:
             raise HTTPException(status_code=422, detail="模板不存在")
         category_map = {int(row["id"]): str(row["category"]) for row in templates}
-        if category_map[data["trigger_template_id"]] == "通用":
+        if category_map[data["trigger_template_id"]] == "通用类":
             raise HTTPException(status_code=422, detail="通用类模板不能作为合同包主合同")
-        if category_map[data["required_template_id"]] != "通用":
+        if category_map[data["required_template_id"]] != "通用类":
             raise HTTPException(status_code=422, detail="必须配套模板须选择通用类模板")
         name = data["name"].strip() or (
             f"{template_map[data['trigger_template_id']]} → "
@@ -1418,9 +1438,9 @@ def update_bundle_rule(
         if len(template_map) != 2:
             raise HTTPException(status_code=422, detail="模板不存在")
         category_map = {int(row["id"]): str(row["category"]) for row in templates}
-        if category_map[data["trigger_template_id"]] == "通用":
+        if category_map[data["trigger_template_id"]] == "通用类":
             raise HTTPException(status_code=422, detail="通用类模板不能作为合同包主合同")
-        if category_map[data["required_template_id"]] != "通用":
+        if category_map[data["required_template_id"]] != "通用类":
             raise HTTPException(status_code=422, detail="必须配套模板须选择通用类模板")
         try:
             conn.execute(
@@ -1493,7 +1513,7 @@ def create_contract(
         ).fetchone()
         if not template_row:
             raise HTTPException(status_code=404, detail="合同模板不存在或已归档")
-        if template_row["category"] == "通用":
+        if template_row["category"] == "通用类":
             raise HTTPException(
                 status_code=422,
                 detail="通用类合同模板不能单独创建合同，只能作为合同包配套合同使用",
@@ -1521,7 +1541,7 @@ def create_contract_bundle(
         ).fetchone()
         if not template_row:
             raise HTTPException(status_code=404, detail="合同模板不存在或已归档")
-        if template_row["category"] == "通用":
+        if template_row["category"] == "通用类":
             raise HTTPException(
                 status_code=422,
                 detail="通用类合同模板不能作为主合同，只能作为合同包配套合同使用",
@@ -1617,12 +1637,12 @@ def update_contract(
         title = payload.title.strip() if payload.title is not None else row["title"]
         if not title:
             raise HTTPException(status_code=422, detail="合同名称不能为空")
-        if row["template_category"] == "通用" and row["bundle_id"]:
+        if row["template_category"] == "通用类" and row["bundle_id"]:
             primary = conn.execute(
                 """
                 SELECT title
                   FROM contracts
-                 WHERE bundle_id = ? AND template_category <> '通用'
+                 WHERE bundle_id = ? AND template_category <> '通用类'
                  ORDER BY id ASC
                  LIMIT 1
                 """,
@@ -1680,6 +1700,7 @@ def update_contract(
             approver_name=row["reviewer_name"] or "",
             template_name=row["template_name"],
             template_version=row["template_version"],
+            contract_category=row["template_category"],
             review_comment=row["review_comment"] or "",
         )
         return _fetch_contract(conn, contract_id, user)
@@ -1760,6 +1781,7 @@ def submit_contract(
             initiator_name=row["creator_name"],
             template_name=row["template_name"],
             template_version=row["template_version"],
+            contract_category=row["template_category"],
         )
         return _fetch_contract(conn, contract_id, user)
 
@@ -1791,6 +1813,7 @@ def withdraw_contract(
             initiator_name=row["creator_name"],
             template_name=row["template_name"],
             template_version=row["template_version"],
+            contract_category=row["template_category"],
         )
         return _fetch_contract(conn, contract_id, user)
 
@@ -1839,6 +1862,7 @@ def review_contract(
             approver_name=user["display_name"],
             template_name=row["template_name"],
             template_version=row["template_version"],
+            contract_category=row["template_category"],
             review_comment=payload.comment,
             approved_at=now if new_status == "approved" else None,
         )

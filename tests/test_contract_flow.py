@@ -136,6 +136,33 @@ def test_contract_number_uses_party_code_and_daily_sequence(client, login_as, mo
     assert second.json()["contract_no"] == f"MMDY-{today}0002"
 
 
+def test_new_template_category_is_stored_and_returned_as_option(client, login_as):
+    login_as(client, "legal", "Legal@123")
+    created = client.post(
+        "/api/templates",
+        json={
+            "name": "新分类测试模板",
+            "category": "自定义分类",
+            "description": "",
+            "instructions": "",
+            "content": "<p>测试正文</p>",
+            "fields": [],
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    categories = client.get("/api/template-categories").json()["items"]
+    assert "自定义分类" in categories
+
+    login_as(client, "business", "Business@123")
+    contract = client.post(
+        "/api/contracts",
+        json={"template_id": created.json()["id"], "title": "新分类合同"},
+    )
+    assert contract.status_code == 201, contract.text
+    assert contract.json()["template_category"] == "自定义分类"
+
+
 def test_contract_creation_requires_party_number(client, login_as, monkeypatch):
     login_as(client, "legal", "Legal@123")
     template = client.post(
@@ -255,6 +282,7 @@ def test_contract_record_syncs_through_status_transitions(client, login_as, monk
     assert payload["oa_contract_id"] == contract["id"]
     assert payload["contract_no"] == contract["contract_no"]
     assert payload["contract_code"] == "TEST"
+    assert payload["contract_category"] == template["category"]
     assert payload["contract_name"] == "归档状态流转测试合同"
     assert payload["initiator_name"] == "陈晨 · 商务经理"
     assert payload["approver_name"] == "林静 · 法务专员"

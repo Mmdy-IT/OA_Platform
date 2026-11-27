@@ -225,7 +225,7 @@ export function ContractDetailPage() {
     <div className="page-stack detail-page">
       <PageHeader
         eyebrow={
-          contract.template_category === "通用" && contract.bundle_id
+          contract.template_category === "通用类" && contract.bundle_id
             ? "CONTRACT · 配套通用合同"
             : `CONTRACT · ${contract.contract_no}`
         }
@@ -330,7 +330,7 @@ export function ContractDetailPage() {
               tableAdjustments={contract.table_adjustments}
               contractNo={contract.contract_no}
               hideContractNumber={
-                contract.template_category === "通用" && !!contract.bundle_id
+                contract.template_category === "通用类" && !!contract.bundle_id
               }
               templateName={`${contract.template_name} · ${contract.template_version}`}
               highlight={false}

@@ -122,6 +122,7 @@ export const api = {
     const query = search.toString();
     return request<ListResponse<Template>>(`/templates${query ? `?${query}` : ""}`);
   },
+  templateCategories: () => request<{ items: string[] }>("/template-categories"),
   template: (id: number | string) => request<Template>(`/templates/${id}`),
   createTemplate: (payload: TemplatePayload) =>
     request<Template>("/templates", { method: "POST", body: JSON.stringify(payload) }),

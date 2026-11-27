@@ -22,6 +22,7 @@ const CATEGORY_TONES: Record<string, string> = {
   服务类: "blue",
   保密类: "violet",
   通用: "slate",
+  通用类: "slate",
 };
 
 type TemplateFilter = "all" | "active" | "archived";
