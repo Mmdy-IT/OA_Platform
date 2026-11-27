@@ -21,6 +21,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api";
 import { hasPermission, homePathForUser, useAuth } from "../auth";
 import { ContractPaper } from "../components/ContractPaper";
+import { ContractAttachments } from "../components/ContractAttachments";
 import { PageHeader } from "../components/PageHeader";
 import { StatusTag } from "../components/StatusTag";
 import type { Contract } from "../types";
@@ -465,6 +466,13 @@ export function ContractDetailPage() {
               <Descriptions.Item label="法务审核">{contract.reviewer_name || "待分配"}</Descriptions.Item>
               <Descriptions.Item label="审核时间">{formatDateTime(contract.reviewed_at)}</Descriptions.Item>
             </Descriptions>
+          </div>
+
+          <div className="panel">
+            <ContractAttachments
+              contractId={contract.id}
+              initialAttachments={contract.attachments || []}
+            />
           </div>
 
           <div className="panel timeline-panel">

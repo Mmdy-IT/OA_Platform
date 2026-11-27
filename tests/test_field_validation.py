@@ -185,3 +185,66 @@ def test_auto_amount_fields_are_not_rejected_as_manual_numeric_input(client, log
     assert values["合同金额大写"] == "壹仟"
     assert values["预付款"] == "叁佰元整"
     assert values["尾款"] == "柒佰元整"
+
+
+def test_multi_select_field_accepts_json_array_and_validates_options(client, login_as):
+    login_as(client, "legal", "Legal@123")
+    template = client.post(
+        "/api/templates",
+        json={
+            "name": "多选下拉测试模板",
+            "category": "测试类",
+            "description": "",
+            "instructions": "",
+            "content": "<p>{{服务范围}}</p>",
+            "fields": [
+                {
+                    "key": "服务范围",
+                    "label": "服务范围",
+                    "type": "multi_select",
+                    "required": True,
+                    "hint": "",
+                    "placeholder": "",
+                    "options": ["咨询", "实施", "运维"],
+                }
+            ],
+        },
+    )
+    assert template.status_code == 201, template.text
+
+    login_as(client, "business", "Business@123")
+    valid = client.post(
+        "/api/contracts",
+        json={
+            "template_id": template.json()["id"],
+            "title": "多选下拉有效值",
+            "field_values": {"服务范围": '["咨询", "运维"]'},
+        },
+    )
+    assert valid.status_code == 201, valid.text
+    submitted = client.post(f"/api/contracts/{valid.json()['id']}/submit")
+    assert submitted.status_code == 200, submitted.text
+
+    invalid = client.post(
+        "/api/contracts",
+        json={
+            "template_id": template.json()["id"],
+            "title": "多选下拉无效值",
+            "field_values": {"服务范围": '["咨询", "其他"]'},
+        },
+    )
+    assert invalid.status_code == 422
+    assert "下拉选项" in invalid.json()["detail"]["message"]
+
+    empty = client.post(
+        "/api/contracts",
+        json={
+            "template_id": template.json()["id"],
+            "title": "多选下拉空值",
+            "field_values": {"服务范围": "[]"},
+        },
+    )
+    assert empty.status_code == 201
+    missing = client.post(f"/api/contracts/{empty.json()['id']}/submit")
+    assert missing.status_code == 422
+    assert "服务范围" in missing.json()["detail"]["fields"]

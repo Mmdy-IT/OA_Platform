@@ -5,7 +5,11 @@ import type {
   ContractTableRow,
   TemplateField,
 } from "./types";
-import { formatChineseDateValue, formatCurrency } from "./utils";
+import {
+  formatChineseDateValue,
+  formatCurrency,
+  formatMultiSelectValue,
+} from "./utils";
 
 const PLACEHOLDER_SOURCE =
   String.raw`\{\{\s*([A-Za-z_\u3400-\u4dbf\u4e00-\u9fff][A-Za-z0-9_\u3400-\u4dbf\u4e00-\u9fff]{0,39})\s*\}\}`;
@@ -149,7 +153,9 @@ function replacePlaceholdersInTextNodes(
             ? formatCurrency(rawValue)
             : field?.type === "date"
               ? formatChineseDateValue(rawValue)
-              : rawValue;
+              : field?.type === "multi_select"
+                ? formatMultiSelectValue(rawValue)
+                : rawValue;
       } else {
         span.className = highlight ? "paper-blank" : "paper-empty";
         span.textContent = "________________";

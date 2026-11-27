@@ -1,5 +1,6 @@
 import type {
   Contract,
+  ContractAttachment,
   BundleRule,
   BundleRulePayload,
   BundleRequirement,
@@ -230,6 +231,40 @@ export const api = {
     }),
   deleteContract: (id: number | string) =>
     request<{ ok: boolean }>(`/contracts/${id}`, { method: "DELETE" }),
+  contractAttachments: (id: number | string) =>
+    request<{ items: ContractAttachment[] }>(`/contracts/${id}/attachments`),
+  uploadContractAttachments: (id: number | string, files: File[]) => {
+    const form = new FormData();
+    for (const file of files) form.append("files", file);
+    return request<{ items: ContractAttachment[] }>(`/contracts/${id}/attachments`, {
+      method: "POST",
+      body: form,
+    });
+  },
+  deleteContractAttachment: (id: number) =>
+    request<{ ok: boolean }>(`/attachments/${id}`, { method: "DELETE" }),
+  downloadContractAttachment: async (attachment: ContractAttachment) => {
+    const response = await fetch(`/api/attachments/${attachment.id}/download`, {
+      credentials: "include",
+    });
+    if (!response.ok) {
+      const contentType = response.headers.get("content-type") || "";
+      const payload = contentType.includes("application/json")
+        ? await response.json()
+        : await response.text();
+      const error = extractError(payload);
+      throw new ApiError(error.message, response.status, error.fields);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = attachment.original_name;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  },
   downloadContract: async (contract: Contract) => {
     const response = await fetch(`/api/contracts/${contract.id}/pdf`, {
       credentials: "include",

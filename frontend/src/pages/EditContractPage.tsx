@@ -157,6 +157,7 @@ export function EditContractPage() {
         initialValues={contract.field_values}
         initialTableAdjustments={contract.table_adjustments}
         contractNo={contract.contract_no}
+        contractId={contract.id}
         hideContractNumber={
           contract.template_category === "通用类" && !!contract.bundle_id
         }

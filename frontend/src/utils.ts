@@ -53,7 +53,8 @@ export const FIELD_TYPE_OPTIONS: { value: TemplateFieldType; label: string }[] =
   { value: "date", label: "日期" },
   { value: "number", label: "数字" },
   { value: "currency", label: "金额" },
-  { value: "select", label: "下拉选项" },
+  { value: "select", label: "下拉选（单选）" },
+  { value: "multi_select", label: "下拉选（多选）" },
 ];
 
 export function fieldTypeLabel(type: TemplateFieldType): string {
@@ -93,7 +94,71 @@ export function missingRequiredFields(
   fields: TemplateField[],
   values: Record<string, string>,
 ): TemplateField[] {
-  return fields.filter((field) => field.required && !(values[field.key] || "").trim());
+  return fields.filter(
+    (field) =>
+      field.required &&
+      (field.type === "multi_select"
+        ? parseMultiSelectValue(values[field.key] || "").length === 0
+        : !(values[field.key] || "").trim()),
+  );
+}
+
+export function parseMultiSelectValue(value: string): string[] {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item)).filter(Boolean);
+    }
+  } catch {
+    // Backward-compatible display for older delimiter-based values.
+  }
+  return raw
+    .split(/[、,，]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export function serializeMultiSelectValue(values: string[]): string {
+  return JSON.stringify(Array.from(new Set(values.filter(Boolean))));
+}
+
+export function formatMultiSelectValue(value: string): string {
+  return parseMultiSelectValue(value).join("、");
+}
+
+const SIGN_DATE_KEYS = new Set(["签署日期", "sign_date"]);
+
+export const SYSTEM_SIGN_DATE_FIELD: TemplateField = {
+  key: "签署日期",
+  label: "签署日期",
+  type: "date",
+  required: true,
+  hint: "请选择双方实际签署日期。",
+  placeholder: "",
+  options: [],
+};
+
+export function isSystemSignDateField(
+  field: Pick<TemplateField, "key" | "label">,
+): boolean {
+  return (
+    SIGN_DATE_KEYS.has(field.key) ||
+    String(field.label || "").replace(/\s+/g, "") === "签署日期"
+  );
+}
+
+export function ensureSystemSignDateField(fields: TemplateField[]): TemplateField[] {
+  const existing = fields.find((field) => isSystemSignDateField(field));
+  if (existing) {
+    return fields.map((field) =>
+      field === existing
+        ? { ...field, label: "签署日期", type: "date", required: true }
+        : field,
+    );
+  }
+  return [...fields, { ...SYSTEM_SIGN_DATE_FIELD }];
 }
 
 export function stripDocumentHeading(content: string): string {
@@ -208,6 +273,13 @@ export function fieldValueProblem(field: TemplateField, value: string): string {
 
   if (field.type === "select") {
     return (field.options || []).includes(trimmed) ? "" : "请从下拉选项中选择";
+  }
+
+  if (field.type === "multi_select") {
+    const selected = parseMultiSelectValue(trimmed);
+    return selected.every((item) => (field.options || []).includes(item))
+      ? ""
+      : "请选择有效的下拉选项";
   }
 
   return "";

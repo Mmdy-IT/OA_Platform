@@ -64,17 +64,11 @@ export function ContractPaper({
     [content, renderedValues, fields, highlight, tableAdjustments],
   );
   const firstHeaderHtml = useMemo(() => {
-    const meta = [
-      contractNo && !hideContractNumber ? `<span>编号 ${escapeHtml(contractNo)}</span>` : "",
-      templateName ? `<span>${escapeHtml(templateName)}</span>` : "",
-    ].join("");
     return [
       '<div class="paper-topline"><span>MMDY · CONTRACT</span><span>内部合同文件</span></div>',
       `<h2 class="paper-title">${escapeHtml(title)}</h2>`,
-      meta ? `<div class="paper-meta-line">${meta}</div>` : "",
-      '<div class="paper-rule"></div>',
     ].join("");
-  }, [contractNo, hideContractNumber, templateName, title]);
+  }, [title]);
   const nextHeaderHtml = useMemo(
     () =>
       [

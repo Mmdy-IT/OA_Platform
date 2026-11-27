@@ -5,7 +5,12 @@ from datetime import datetime
 
 from backend import contract_archive, party_db, seed
 from backend.contract_number import contract_serial_number
-from backend.pdf import _contract_document_values, _format_field_values, render_contract_text
+from backend.pdf import (
+    _contract_document_values,
+    _format_field_values,
+    _strip_leading_html_heading,
+    render_contract_text,
+)
 
 
 def sample_field_value(field: dict) -> str:
@@ -401,6 +406,26 @@ def test_pdf_date_values_use_chinese_format():
         {"delivery_date": "2026-11-25"},
     )
     assert values["delivery_date"] == "2026年11月25日"
+
+
+def test_pdf_multi_select_values_use_chinese_delimiter():
+    values = _format_field_values(
+        [{"key": "服务范围", "type": "multi_select"}],
+        {"服务范围": '["咨询", "实施", "运维"]'},
+    )
+    assert values["服务范围"] == "咨询、实施、运维"
+
+
+def test_pdf_removes_duplicate_leading_contract_heading():
+    content = (
+        '<p style="text-align:center"><strong>标准采购合同</strong></p>'
+        "<p>合同编号：{{合同编号}}</p>"
+    )
+
+    stripped = _strip_leading_html_heading(content)
+
+    assert "标准采购合同" not in stripped
+    assert "合同编号：{{合同编号}}" in stripped
 
 
 def test_contract_number_placeholder_uses_generated_contract_number():

@@ -60,7 +60,12 @@ import type {
   TemplateImportDraft,
   TemplatePayload,
 } from "../types";
-import { FIELD_TYPE_OPTIONS, fieldTypeLabel } from "../utils";
+import {
+  FIELD_TYPE_OPTIONS,
+  ensureSystemSignDateField,
+  fieldTypeLabel,
+  isSystemSignDateField,
+} from "../utils";
 
 const DEFAULT_CATEGORIES = [
   "采购类",
@@ -72,11 +77,17 @@ const DEFAULT_CATEGORIES = [
 ];
 
 function isSystemTemplateField(field: TemplateField): boolean {
-  return isSystemPartyField(field) || isSystemAmountField(field);
+  return (
+    isSystemPartyField(field) ||
+    isSystemAmountField(field) ||
+    isSystemSignDateField(field)
+  );
 }
 
 function ensureTemplateSystemFields(fields: TemplateField[]): TemplateField[] {
-  return ensureSystemAmountFields(ensureSystemPartyFields(fields));
+  return ensureSystemSignDateField(
+    ensureSystemAmountFields(ensureSystemPartyFields(fields)),
+  );
 }
 
 function sanitizeFieldKey(value: string): string {
@@ -356,7 +367,10 @@ export function TemplateEditorPage() {
         label: field.label.trim(),
         hint: field.hint.trim(),
         placeholder: field.placeholder.trim(),
-        options: field.type === "select" ? field.options : [],
+        options:
+          field.type === "select" || field.type === "multi_select"
+            ? field.options
+            : [],
         auto_fill: normalizeAutoFill(field),
       })),
     };
@@ -565,7 +579,7 @@ export function TemplateEditorPage() {
               <Button type="primary" ghost size="small" icon={<PlusOutlined />} onClick={addField}>添加空白项</Button>
             </div>
             <p className="fields-config-help">
-              每个空白项对应业务表单中的一个输入控件，并可单独设置填写要求。甲方、乙方主体信息由系统自动生成，选择主体名称后会带出信用代码、地址、开户行等信息；联系人和联系方式由业务人员手动填写。总金额和总金额（大写）由表格「总额（元）」列自动计算。
+              每个空白项对应业务表单中的一个输入控件，并可单独设置填写要求。甲方、乙方主体信息由系统自动生成，选择主体名称后会带出信用代码、地址、开户行等信息；联系人和联系方式由业务人员手动填写。总金额和总金额（大写）由表格「总额（元）」列自动计算，签署日期为系统内置日期字段。
             </p>
 
             {visibleFieldEntries.length ? (
@@ -667,7 +681,8 @@ function FieldConfig({
   const autoFillRole = resolveAutoFill(field);
   const systemPartyField = isSystemPartyField(field);
   const systemAmountField = isSystemAmountField(field);
-  const systemField = systemPartyField || systemAmountField;
+  const systemSignDateField = isSystemSignDateField(field);
+  const systemField = systemPartyField || systemAmountField || systemSignDateField;
   return (
     <div className="field-config-body">
       <div className="field-config-grid">
@@ -696,6 +711,8 @@ function FieldConfig({
           <span className="field-help-inline">
             {systemAmountField
               ? "系统自动计算字段，字段标识和类型固定，可在正文中直接引用。"
+              : systemSignDateField
+                ? "系统内置日期字段，字段标识和类型固定，可在正文中直接引用。"
               : systemPartyField
                 ? "系统生成的主体字段，字段标识固定，便于正文占位符稳定引用。"
               : "新增空白项时自动取显示名称；支持中文，业务人员看到的就是这个名称。"}
@@ -721,6 +738,8 @@ function FieldConfig({
           <span className="field-help-inline">
             {systemAmountField
               ? "该字段由系统自动计算，无需配置数据来源。"
+              : systemSignDateField
+                ? "系统内置日期字段，无需配置数据来源，业务人员填写时通过日期选择器选择。"
               : systemPartyField
                 ? "由系统从主体库自动生成。选择甲方/乙方主体名称后，同侧信用代码、地址、开户行等信息会自动带出；联系人和联系方式需手动填写。"
               : "选择「主体名称（下拉选择）」可从 mmdy_party_info 选择主体并带出同侧信息；选择「仓库简称（下拉选择并填充地址）」可从 mmdy_warehouse_info 选择仓库，正文填充该仓库的完整地址。"}
@@ -737,7 +756,7 @@ function FieldConfig({
           <label>占位提示</label>
           <Input value={field.placeholder} onChange={(event) => onChange({ placeholder: event.target.value })} placeholder="输入框中的提示文字" maxLength={200} />
         </div>
-        {field.type === "select" && (
+        {(field.type === "select" || field.type === "multi_select") && (
           <div className="composer-field field-options-field">
             <label>下拉选项</label>
             <Select

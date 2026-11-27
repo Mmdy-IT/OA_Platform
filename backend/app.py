@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import contract_archive, party_db, user_permissions, warehouse_db
+from . import contract_archive, db as db_module, party_db, user_permissions, warehouse_db
 from .amounts import apply_auto_amounts, apply_table_row_auto_values
 from .contract_number import (
     DEFAULT_CONTRACT_CODE,
@@ -26,7 +26,11 @@ from .contract_number import (
 from .config import get_feishu_settings, password_login_enabled
 from .db import BASE_DIR, db_cursor, init_db, utcnow
 from .feishu import FeishuAuthError, get_feishu_client
-from .field_validation import invalid_field_summary, invalid_field_values
+from .field_validation import (
+    invalid_field_summary,
+    invalid_field_values,
+    parse_multi_select_value,
+)
 from .importers import import_document
 from .pdf import build_contract_pdf
 from .richtext import (
@@ -68,6 +72,31 @@ FEISHU_STATE_COOKIE = "oa_feishu_state"
 FEISHU_NEXT_COOKIE = "oa_feishu_next"
 logger = logging.getLogger(__name__)
 
+ATTACHMENT_EXTENSIONS = {
+    ".xlsx",
+    ".xls",
+    ".doc",
+    ".docx",
+    ".dox",
+    ".pdf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".jfif",
+    ".gif",
+    ".bmp",
+    ".webp",
+    ".tif",
+    ".tiff",
+    ".svg",
+    ".ico",
+    ".heic",
+    ".heif",
+    ".avif",
+}
+MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
+MAX_ATTACHMENTS_PER_CONTRACT = 30
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -106,6 +135,67 @@ def _load_json(raw: str | None, default):
         return json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         return default
+
+
+def _attachments_root() -> Path:
+    return Path(db_module.DATA_DIR) / "attachments"
+
+
+def _attachment_dict(row) -> dict:
+    return {
+        "id": row["id"],
+        "contract_id": row["contract_id"],
+        "original_name": row["original_name"],
+        "content_type": row["content_type"],
+        "size": row["size"],
+        "created_at": row["created_at"],
+    }
+
+
+def _contract_attachments(conn, contract_id: int) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT id, contract_id, original_name, content_type, size, created_at
+          FROM contract_attachments
+         WHERE contract_id = ?
+         ORDER BY id ASC
+        """,
+        (contract_id,),
+    ).fetchall()
+    return [_attachment_dict(row) for row in rows]
+
+
+def _attachment_access(row, user: dict, *, require_editable: bool) -> None:
+    if row["creator_id"] != user["id"] and user["role"] not in {"admin", "legal"}:
+        raise HTTPException(status_code=403, detail="无权操作该合同附件")
+    if require_editable and row["status"] not in {"draft", "rejected"}:
+        raise HTTPException(status_code=409, detail="仅草稿或已驳回合同可以修改附件")
+
+
+def _remove_attachment_files(conn, contract_ids: list[int]) -> None:
+    if not contract_ids:
+        return
+    placeholders = ", ".join(["?"] * len(contract_ids))
+    rows = conn.execute(
+        f"""
+        SELECT contract_id, stored_name
+          FROM contract_attachments
+         WHERE contract_id IN ({placeholders})
+        """,
+        contract_ids,
+    ).fetchall()
+    for row in rows:
+        path = _attachments_root() / str(row["contract_id"]) / str(row["stored_name"])
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Failed to remove attachment file %s", path)
+    for contract_id in contract_ids:
+        directory = _attachments_root() / str(contract_id)
+        try:
+            directory.rmdir()
+        except OSError:
+            pass
 
 
 def _public_user(user: dict) -> dict:
@@ -495,7 +585,9 @@ def _submit_bundle(conn, row, user: dict) -> dict:
         missing = [
             str(field.get("label") or field.get("key") or "")
             for field in fields
-            if not str(values.get(str(field.get("key") or ""), "")).strip()
+            if not _field_value_present(
+                field, values.get(str(field.get("key") or ""), "")
+            )
         ]
         if missing:
             raise HTTPException(
@@ -726,6 +818,7 @@ def _contract_detail(conn, row) -> dict:
     ).fetchall()
     data["events"] = [_event_dict(event) for event in events]
     data["bundle"] = _bundle_dict(conn, row["bundle_id"]) if row["bundle_id"] else None
+    data["attachments"] = _contract_attachments(conn, int(row["id"]))
     return data
 
 
@@ -789,8 +882,15 @@ def _missing_required(fields: list[dict], values: dict[str, str]) -> list[str]:
     return [
         field["label"]
         for field in fields
-        if field.get("required") and not values.get(field["key"], "").strip()
+        if field.get("required")
+        and not _field_value_present(field, values.get(field["key"], ""))
     ]
+
+
+def _field_value_present(field: dict, value: str) -> bool:
+    if str(field.get("type") or "") == "multi_select":
+        return bool(parse_multi_select_value(value))
+    return bool(str(value or "").strip())
 
 
 def _insert_event(
@@ -1583,6 +1683,183 @@ def get_contract(
         return _fetch_contract(conn, contract_id, user)
 
 
+@app.get("/api/contracts/{contract_id}/attachments")
+def list_contract_attachments(
+    contract_id: int,
+    user: dict = Depends(get_current_user),
+):
+    with db_cursor() as conn:
+        contract = conn.execute(
+            "SELECT * FROM contracts WHERE id = ?", (contract_id,)
+        ).fetchone()
+        if not contract:
+            raise HTTPException(status_code=404, detail="合同不存在")
+        if (
+            contract["creator_id"] != user["id"]
+            and user["role"] not in {"admin", "legal"}
+            and "reviews" not in set(user.get("permissions") or [])
+        ):
+            raise HTTPException(status_code=403, detail="无权查看该合同附件")
+        return {"items": _contract_attachments(conn, contract_id)}
+
+
+@app.post("/api/contracts/{contract_id}/attachments", status_code=status.HTTP_201_CREATED)
+async def upload_contract_attachments(
+    contract_id: int,
+    files: list[UploadFile] = File(...),
+    user: dict = Depends(get_current_user),
+):
+    if not files:
+        raise HTTPException(status_code=422, detail="请选择要上传的附件")
+    with db_cursor(commit=True) as conn:
+        contract = conn.execute(
+            "SELECT * FROM contracts WHERE id = ?", (contract_id,)
+        ).fetchone()
+        if not contract:
+            raise HTTPException(status_code=404, detail="合同不存在")
+        _attachment_access(contract, user, require_editable=True)
+        existing_count = conn.execute(
+            "SELECT COUNT(*) AS total FROM contract_attachments WHERE contract_id = ?",
+            (contract_id,),
+        ).fetchone()["total"]
+        if int(existing_count) + len(files) > MAX_ATTACHMENTS_PER_CONTRACT:
+            raise HTTPException(
+                status_code=422,
+                detail=f"每份合同最多上传 {MAX_ATTACHMENTS_PER_CONTRACT} 个附件",
+            )
+
+        directory = _attachments_root() / str(contract_id)
+        directory.mkdir(parents=True, exist_ok=True)
+        written_paths: list[Path] = []
+        created_ids: list[int] = []
+        try:
+            for upload in files:
+                original_name = Path(upload.filename or "附件").name[:255]
+                suffix = Path(original_name).suffix.lower()
+                content_type = str(upload.content_type or "")
+                if suffix not in ATTACHMENT_EXTENSIONS and not content_type.lower().startswith("image/"):
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"不支持的附件格式：{suffix or '未知'}",
+                    )
+                payload = await upload.read()
+                if len(payload) > MAX_ATTACHMENT_BYTES:
+                    raise HTTPException(status_code=413, detail="单个附件不能超过 20MB")
+                stored_name = f"{secrets.token_hex(16)}{suffix}"
+                path = directory / stored_name
+                path.write_bytes(payload)
+                written_paths.append(path)
+                cursor = conn.execute(
+                    """
+                    INSERT INTO contract_attachments(
+                        contract_id, original_name, stored_name, content_type,
+                        size, uploaded_by, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        contract_id,
+                        original_name,
+                        stored_name,
+                        content_type,
+                        len(payload),
+                        user["id"],
+                        utcnow(),
+                    ),
+                )
+                created_ids.append(int(cursor.lastrowid))
+        except Exception:
+            for path in written_paths:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
+            raise
+        placeholders = ", ".join(["?"] * len(created_ids))
+        rows = conn.execute(
+            f"""
+            SELECT id, contract_id, original_name, content_type, size, created_at
+              FROM contract_attachments
+             WHERE id IN ({placeholders})
+             ORDER BY id ASC
+            """,
+            created_ids,
+        ).fetchall()
+        return {"items": [_attachment_dict(row) for row in rows]}
+
+
+@app.get("/api/attachments/{attachment_id}/download")
+def download_attachment(
+    attachment_id: int,
+    user: dict = Depends(get_current_user),
+):
+    with db_cursor() as conn:
+        attachment = conn.execute(
+            """
+            SELECT a.*, c.creator_id, c.status
+              FROM contract_attachments a
+              JOIN contracts c ON c.id = a.contract_id
+             WHERE a.id = ?
+            """,
+            (attachment_id,),
+        ).fetchone()
+        if not attachment:
+            raise HTTPException(status_code=404, detail="附件不存在")
+        if (
+            attachment["creator_id"] != user["id"]
+            and user["role"] not in {"admin", "legal"}
+            and "reviews" not in set(user.get("permissions") or [])
+        ):
+            raise HTTPException(status_code=403, detail="无权下载该附件")
+        path = (
+            _attachments_root()
+            / str(attachment["contract_id"])
+            / str(attachment["stored_name"])
+        )
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="附件文件不存在")
+        return FileResponse(
+            path,
+            filename=attachment["original_name"],
+            media_type=attachment["content_type"] or "application/octet-stream",
+        )
+
+
+@app.delete("/api/attachments/{attachment_id}")
+def delete_attachment(
+    attachment_id: int,
+    user: dict = Depends(get_current_user),
+):
+    with db_cursor(commit=True) as conn:
+        attachment = conn.execute(
+            """
+            SELECT a.*, c.creator_id, c.status
+              FROM contract_attachments a
+              JOIN contracts c ON c.id = a.contract_id
+             WHERE a.id = ?
+            """,
+            (attachment_id,),
+        ).fetchone()
+        if not attachment:
+            raise HTTPException(status_code=404, detail="附件不存在")
+        _attachment_access(attachment, user, require_editable=True)
+        conn.execute("DELETE FROM contract_attachments WHERE id = ?", (attachment_id,))
+        path = (
+            _attachments_root()
+            / str(attachment["contract_id"])
+            / str(attachment["stored_name"])
+        )
+        try:
+            path.unlink(missing_ok=True)
+            path.parent.rmdir()
+        except OSError:
+            pass
+    return {"ok": True}
+
+
 @app.post("/api/contracts", status_code=status.HTTP_201_CREATED)
 def create_contract(
     payload: ContractCreate,
@@ -1965,6 +2242,7 @@ def delete_contract(
         ):
             raise HTTPException(status_code=409, detail="仅草稿或已驳回的合同可以删除")
         member_ids = [int(member["id"]) for member in members]
+        _remove_attachment_files(conn, member_ids)
         placeholders = ", ".join(["?"] * len(member_ids))
         conn.execute(
             f"DELETE FROM contracts WHERE id IN ({placeholders})",

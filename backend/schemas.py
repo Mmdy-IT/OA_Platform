@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -63,7 +64,9 @@ class LoginRequest(BaseModel):
 class TemplateField(BaseModel):
     key: str
     label: str = Field(min_length=1, max_length=80)
-    type: Literal["text", "textarea", "date", "number", "currency", "select"] = "text"
+    type: Literal[
+        "text", "textarea", "date", "number", "currency", "select", "multi_select"
+    ] = "text"
     required: bool = False
     hint: str = Field(default="", max_length=500)
     placeholder: str = Field(default="", max_length=200)
@@ -251,6 +254,11 @@ def normalize_field_values(values: dict[str, Any] | None) -> dict[str, str]:
             normalized[key] = ""
         elif isinstance(value, bool):
             normalized[key] = "是" if value else "否"
+        elif isinstance(value, (list, tuple)):
+            normalized[key] = json.dumps(
+                [str(item) for item in value if str(item).strip()],
+                ensure_ascii=False,
+            )
         else:
             normalized[key] = str(value).strip()
     return normalized

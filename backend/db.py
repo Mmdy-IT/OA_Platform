@@ -121,6 +121,20 @@ CREATE TABLE IF NOT EXISTS contract_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_contract ON contract_events(contract_id, id);
+
+CREATE TABLE IF NOT EXISTS contract_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+    original_name TEXT NOT NULL,
+    stored_name TEXT NOT NULL,
+    content_type TEXT NOT NULL DEFAULT '',
+    size INTEGER NOT NULL DEFAULT 0,
+    uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_contract_attachments_contract
+    ON contract_attachments(contract_id, id);
 """
 
 

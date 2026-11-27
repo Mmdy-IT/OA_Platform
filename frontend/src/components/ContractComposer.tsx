@@ -64,9 +64,12 @@ import {
   missingRequiredFields,
   normalizeDateValue,
   numericInputOptions,
+  parseMultiSelectValue,
   sanitizeNumericInput,
+  serializeMultiSelectValue,
 } from "../utils";
 import { ContractPaper } from "./ContractPaper";
+import { ContractAttachments } from "./ContractAttachments";
 
 function newTableRowId(): string {
   return `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -137,6 +140,12 @@ interface ContractComposerProps {
   initialValues?: Record<string, string>;
   initialTableAdjustments?: ContractTableAdjustments;
   contractNo?: string;
+  contractId?: number;
+  onEnsureAttachmentContract?: (
+    title: string,
+    values: Record<string, string>,
+    tableAdjustments: ContractTableAdjustments,
+  ) => Promise<number>;
   hideContractNumber?: boolean;
   banner?: ReactNode;
   onChangeTemplate?: () => void;
@@ -159,6 +168,8 @@ export function ContractComposer({
   initialValues = {},
   initialTableAdjustments = {},
   contractNo,
+  contractId,
+  onEnsureAttachmentContract,
   hideContractNumber = false,
   banner,
   onChangeTemplate,
@@ -168,6 +179,7 @@ export function ContractComposer({
 }: ContractComposerProps) {
   const [title, setTitle] = useState(initialTitle || template.name);
   const [values, setValues] = useState<Record<string, string>>(initialValues);
+  const [attachmentContractId, setAttachmentContractId] = useState<number | undefined>(contractId);
   const [tableAdjustments, setTableAdjustments] = useState<ContractTableAdjustments>(() =>
     hydrateTableAdjustments(template.content, initialTableAdjustments),
   );
@@ -182,6 +194,10 @@ export function ContractComposer({
   const [warehouses, setWarehouses] = useState<WarehouseInfo[]>([]);
   const [warehouseLoading, setWarehouseLoading] = useState(true);
   const [warehouseError, setWarehouseError] = useState("");
+
+  useEffect(() => {
+    setAttachmentContractId(contractId);
+  }, [contractId]);
   const activeFields = useMemo(() => {
     const usedKeys = new Set(extractPlaceholderKeys(template.content));
     return template.fields.filter((field) => usedKeys.has(field.key));
@@ -430,6 +446,20 @@ export function ContractComposer({
       return autoPaymentState.hasBase ? kind : null;
     }
     return autoAmountState.hasColumn ? kind : null;
+  };
+
+  const ensureAttachmentContract = async (): Promise<number> => {
+    if (attachmentContractId) return attachmentContractId;
+    if (!onEnsureAttachmentContract) {
+      throw new Error("请先保存合同草稿后再上传附件");
+    }
+    const id = await onEnsureAttachmentContract(
+      title.trim() || template.name,
+      effectiveValues,
+      tableAdjustments,
+    );
+    setAttachmentContractId(id);
+    return id;
   };
 
   const rowsForTable = (model: ContractTableModel): ContractTableRow[] =>
@@ -961,6 +991,18 @@ export function ContractComposer({
               </>
             )}
 
+            <div className="form-divider">
+              <span>合同附件</span>
+              <small>Excel、Word、PDF、图片</small>
+            </div>
+            <ContractAttachments
+              contractId={attachmentContractId}
+              editable
+              onEnsureContract={
+                onEnsureAttachmentContract ? ensureAttachmentContract : undefined
+              }
+            />
+
             <div className="composer-actions">
               <div className="composer-actions-note">
                 <CheckCircleFilled />
@@ -1211,6 +1253,23 @@ function FieldControl({
           classNames={{ popup: { root: "contract-option-dropdown" } }}
           showSearch
           optionFilterProp="label"
+        />
+      ) : field.type === "multi_select" ? (
+        <Select
+          id={`input-${field.key}`}
+          mode="multiple"
+          size="large"
+          value={parseMultiSelectValue(value)}
+          placeholder={field.placeholder || `请选择${field.label}`}
+          options={field.options.map((option) => ({ label: option, value: option, title: option }))}
+          onChange={(values: string[]) => onChange(serializeMultiSelectValue(values))}
+          status={error ? "error" : undefined}
+          popupMatchSelectWidth={false}
+          classNames={{ popup: { root: "contract-option-dropdown" } }}
+          showSearch
+          optionFilterProp="label"
+          allowClear
+          maxTagCount="responsive"
         />
       ) : field.type === "date" ? (
         <DatePicker

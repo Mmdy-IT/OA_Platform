@@ -61,7 +61,8 @@ export type TemplateFieldType =
   | "date"
   | "number"
   | "currency"
-  | "select";
+  | "select"
+  | "multi_select";
 
 export type PartySide = "party_a" | "party_b";
 
@@ -164,6 +165,15 @@ export interface ContractEvent {
   created_at: string;
 }
 
+export interface ContractAttachment {
+  id: number;
+  contract_id: number;
+  original_name: string;
+  content_type: string;
+  size: number;
+  created_at: string;
+}
+
 export interface Contract extends ContractSummary {
   template_id: number;
   template_content: string;
@@ -174,6 +184,7 @@ export interface Contract extends ContractSummary {
   reviewer_name: string | null;
   events: ContractEvent[];
   bundle: ContractBundle | null;
+  attachments: ContractAttachment[];
 }
 
 export interface ContractBundleMember {

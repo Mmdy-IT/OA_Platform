@@ -221,6 +221,10 @@ export function NewContractPage() {
         <ContractComposer
           template={selected}
           contractNo={contractNo || undefined}
+          contractId={draftId ?? undefined}
+          onEnsureAttachmentContract={async (currentTitle, currentValues, currentAdjustments) =>
+            ensureDraft(currentTitle, currentValues, currentAdjustments)
+          }
           onChangeTemplate={changeTemplate}
           backAction={<Button size="large" onClick={() => navigate("/contracts")}>取消</Button>}
           onSaveDraft={saveDraft}

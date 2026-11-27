@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -12,6 +13,23 @@ _DATE_VALUE_RE = re.compile(
 )
 _NUMERIC_SEPARATORS_RE = re.compile(r"[\s\u00a0,，¥￥]")
 _SYSTEM_AMOUNT_FIELD_KEYS = frozenset({"预付款", "尾款"})
+
+
+def parse_multi_select_value(value: str) -> list[str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed if str(item).strip()]
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return [item.strip() for item in re.split(r"[、,，]", raw) if item.strip()]
+
+
+def format_multi_select_value(value: str) -> str:
+    return "、".join(parse_multi_select_value(value))
 
 
 def _field_message(field: dict, value: str) -> str:
@@ -51,6 +69,15 @@ def _field_message(field: dict, value: str) -> str:
     if field_type == "select":
         options = field.get("options") or []
         return "" if value in options else "请从下拉选项中选择"
+
+    if field_type == "multi_select":
+        options = field.get("options") or []
+        selected = parse_multi_select_value(value)
+        return (
+            ""
+            if all(item in options for item in selected)
+            else "请选择有效的下拉选项"
+        )
 
     return ""
 

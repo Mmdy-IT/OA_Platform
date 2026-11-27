@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html as html_module
 import os
 import re
 import threading
@@ -27,6 +28,7 @@ from .amounts import (
     payment_upper_texts,
     resolve_payment_base_amount,
 )
+from .field_validation import format_multi_select_value
 from .warehouse_db import resolve_warehouse_values
 from .richpdf import build_html_flowables
 from .richtext import BLANK, CONTRACT_NUMBER_PLACEHOLDER, PLACEHOLDER_RE, is_html
@@ -194,7 +196,30 @@ def _format_field_values(fields: list[dict], values: dict[str, str]) -> dict[str
                 continue
         elif field_type == "date":
             formatted[key] = _format_chinese_date(str(raw))
+        elif field_type == "multi_select":
+            formatted[key] = format_multi_select_value(str(raw))
     return formatted
+
+
+def _strip_leading_html_heading(content: str) -> str:
+    match = re.match(
+        r"\s*<(p|h[1-6])\b[^>]*>(.*?)</\1\s*>",
+        content or "",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return content
+    text = re.sub(r"<[^>]+>", "", match.group(2))
+    text = html_module.unescape(text).replace("\xa0", " ").strip()
+    if (
+        not text
+        or len(text) > 24
+        or "{{" in text
+        or not ("合同" in text or "协议" in text)
+        or any(punct in text for punct in "：:，,。；;")
+    ):
+        return content
+    return content[match.end():].lstrip()
 
 
 def _contract_document_values(contract: dict) -> dict[str, str]:
@@ -281,6 +306,7 @@ def build_contract_pdf(contract: dict) -> bytes:
     )
     template_content = apply_table_summary_totals(template_content)
     if is_html(template_content):
+        template_content = _strip_leading_html_heading(template_content)
         story.extend(
             build_html_flowables(
                 template_content,
