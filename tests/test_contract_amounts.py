@@ -119,6 +119,18 @@ def test_apply_auto_amounts_fills_custom_uppercase_field():
     assert updated == {"总费用": "30", "总费用大写": "叁拾"}
 
 
+def test_apply_auto_amounts_supports_total_amount_system_fields():
+    fields = [
+        {"key": "总金额", "label": "总金额", "type": "currency"},
+        {"key": "总金额大写", "label": "总金额（大写）", "type": "text"},
+    ]
+
+    updated = apply_auto_amounts(AMOUNT_TABLE, None, fields, {})
+
+    assert updated["总金额"] == "3000.50"
+    assert updated["总金额大写"] == "叁仟元伍角"
+
+
 def test_table_summary_row_uses_row_total_sum_and_uppercase():
     content = """
     <table>

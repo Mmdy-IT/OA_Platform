@@ -8,22 +8,74 @@ import {
 
 export const TOTAL_AMOUNT_FIELD_KEY = "总额";
 export const TOTAL_AMOUNT_UPPER_FIELD_KEY = "大写总额";
+export const TOTAL_AMOUNT_ALIAS_FIELD_KEY = "总金额";
+export const TOTAL_AMOUNT_ALIAS_UPPER_FIELD_KEY = "总金额大写";
 export const TOTAL_AMOUNT_COLUMN_LABEL = "总额（元）";
 export const PREPAYMENT_FIELD_KEY = PREPAYMENT_PLACEHOLDER;
 export const FINAL_PAYMENT_FIELD_KEY = FINAL_PAYMENT_PLACEHOLDER;
 
 export type AutoAmountFieldKind = "total" | "upper" | "prepayment" | "final";
 
+export const TOTAL_AMOUNT_FIELD_KEYS = [
+  TOTAL_AMOUNT_FIELD_KEY,
+  TOTAL_AMOUNT_ALIAS_FIELD_KEY,
+] as const;
+export const TOTAL_AMOUNT_UPPER_FIELD_KEYS = [
+  TOTAL_AMOUNT_UPPER_FIELD_KEY,
+  TOTAL_AMOUNT_ALIAS_UPPER_FIELD_KEY,
+] as const;
+
 const CN_DIGITS = ["零", "壹", "贰", "叁", "肆", "伍", "陆", "柒", "捌", "玖"];
 const CN_SMALL_UNITS = ["", "拾", "佰", "仟"];
 const CN_BIG_UNITS = ["", "万", "亿", "万亿"];
 
 export function autoAmountFieldKind(key: string): AutoAmountFieldKind | null {
-  if (key === TOTAL_AMOUNT_FIELD_KEY) return "total";
-  if (key === TOTAL_AMOUNT_UPPER_FIELD_KEY) return "upper";
+  if (TOTAL_AMOUNT_FIELD_KEYS.includes(key as (typeof TOTAL_AMOUNT_FIELD_KEYS)[number])) {
+    return "total";
+  }
+  if (
+    TOTAL_AMOUNT_UPPER_FIELD_KEYS.includes(
+      key as (typeof TOTAL_AMOUNT_UPPER_FIELD_KEYS)[number],
+    )
+  ) {
+    return "upper";
+  }
   if (key === PREPAYMENT_FIELD_KEY) return "prepayment";
   if (key === FINAL_PAYMENT_FIELD_KEY) return "final";
   return null;
+}
+
+export const SYSTEM_AMOUNT_FIELDS: TemplateField[] = [
+  {
+    key: TOTAL_AMOUNT_ALIAS_FIELD_KEY,
+    label: "总金额",
+    type: "currency",
+    required: false,
+    hint: "由表格「总额（元）」列中所有数据行自动合计，无需手动填写。",
+    placeholder: "",
+    options: [],
+  },
+  {
+    key: TOTAL_AMOUNT_ALIAS_UPPER_FIELD_KEY,
+    label: "总金额（大写）",
+    type: "text",
+    required: false,
+    hint: "根据总金额自动生成人民币大写，无需手动填写。",
+    placeholder: "",
+    options: [],
+  },
+];
+
+export function isSystemAmountField(field: Pick<TemplateField, "key">): boolean {
+  return SYSTEM_AMOUNT_FIELDS.some((item) => item.key === field.key);
+}
+
+export function ensureSystemAmountFields(fields: TemplateField[]): TemplateField[] {
+  const keys = new Set(fields.map((field) => field.key));
+  const missing = SYSTEM_AMOUNT_FIELDS.filter((field) => !keys.has(field.key)).map(
+    (field) => ({ ...field }),
+  );
+  return missing.length ? [...fields, ...missing] : fields;
 }
 
 export function uppercaseFieldBaseKey(

@@ -11,6 +11,14 @@ from .tables import apply_table_adjustments
 
 TOTAL_AMOUNT_FIELD_KEY = "总额"
 TOTAL_AMOUNT_UPPER_FIELD_KEY = "大写总额"
+TOTAL_AMOUNT_ALIAS_FIELD_KEY = "总金额"
+TOTAL_AMOUNT_ALIAS_UPPER_FIELD_KEY = "总金额大写"
+TOTAL_AMOUNT_FIELD_KEYS = frozenset(
+    {TOTAL_AMOUNT_FIELD_KEY, TOTAL_AMOUNT_ALIAS_FIELD_KEY}
+)
+TOTAL_AMOUNT_UPPER_FIELD_KEYS = frozenset(
+    {TOTAL_AMOUNT_UPPER_FIELD_KEY, TOTAL_AMOUNT_ALIAS_UPPER_FIELD_KEY}
+)
 TOTAL_AMOUNT_COLUMN_LABEL = "总额（元）"
 PREPAYMENT_FIELD_KEY = PREPAYMENT_PLACEHOLDER
 FINAL_PAYMENT_FIELD_KEY = FINAL_PAYMENT_PLACEHOLDER
@@ -625,15 +633,15 @@ def apply_auto_amounts(
     keys = {str(field.get("key") or "") for field in fields or []}
     uppercase_sources: dict[str, str] = {}
     for key in keys:
-        if key == TOTAL_AMOUNT_UPPER_FIELD_KEY:
+        if key in TOTAL_AMOUNT_UPPER_FIELD_KEYS:
             continue
         base_key = _uppercase_base_key(keys, key)
         if base_key:
             uppercase_sources[key] = base_key
 
-    needs_table_total = (
-        TOTAL_AMOUNT_FIELD_KEY in keys or TOTAL_AMOUNT_UPPER_FIELD_KEY in keys
-    )
+    total_keys = keys & TOTAL_AMOUNT_FIELD_KEYS
+    upper_total_keys = keys & TOTAL_AMOUNT_UPPER_FIELD_KEYS
+    needs_table_total = bool(total_keys or upper_total_keys)
     payment_keys = keys & PAYMENT_FIELD_KEYS
     if not needs_table_total and not uppercase_sources and not payment_keys:
         return values
@@ -644,10 +652,10 @@ def apply_auto_amounts(
         total = sum_contract_table_total(content, adjustments)
         if total is not None:
             total_text = f"{total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):.2f}"
-            if TOTAL_AMOUNT_FIELD_KEY in keys:
-                result[TOTAL_AMOUNT_FIELD_KEY] = total_text
-            if TOTAL_AMOUNT_UPPER_FIELD_KEY in keys:
-                result[TOTAL_AMOUNT_UPPER_FIELD_KEY] = amount_to_chinese_upper(total_text)
+            for key in total_keys:
+                result[key] = total_text
+            for key in upper_total_keys:
+                result[key] = amount_to_chinese_upper(total_text)
 
     if payment_keys:
         payment_base = resolve_payment_base_amount(content, adjustments, fields, values)

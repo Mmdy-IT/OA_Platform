@@ -50,6 +50,10 @@ import {
   normalizeAutoFill,
   resolveAutoFill,
 } from "../party";
+import {
+  ensureSystemAmountFields,
+  isSystemAmountField,
+} from "../money";
 import type {
   TemplateField,
   TemplateFieldType,
@@ -66,6 +70,14 @@ const DEFAULT_CATEGORIES = [
   "通用",
   "通用类",
 ];
+
+function isSystemTemplateField(field: TemplateField): boolean {
+  return isSystemPartyField(field) || isSystemAmountField(field);
+}
+
+function ensureTemplateSystemFields(fields: TemplateField[]): TemplateField[] {
+  return ensureSystemAmountFields(ensureSystemPartyFields(fields));
+}
 
 function sanitizeFieldKey(value: string): string {
   const cleaned = value
@@ -131,7 +143,7 @@ export function TemplateEditorPage() {
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
   const [content, setContent] = useState("");
-  const [fields, setFields] = useState<TemplateField[]>(() => ensureSystemPartyFields([]));
+  const [fields, setFields] = useState<TemplateField[]>(() => ensureTemplateSystemFields([]));
   const [importSource, setImportSource] = useState<TemplateImportDraft["source"] | null>(
     importDraft?.source ?? null,
   );
@@ -166,7 +178,7 @@ export function TemplateEditorPage() {
     setDescription(importDraft.description || "");
     setInstructions(importDraft.instructions || "");
     setContent(importDraft.content);
-    setFields(ensureSystemPartyFields(importDraft.fields));
+    setFields(ensureTemplateSystemFields(importDraft.fields));
     setImportSource(importDraft.source);
   }, [isEdit, importDraft]);
 
@@ -183,7 +195,7 @@ export function TemplateEditorPage() {
         setDescription(template.description);
         setInstructions(template.instructions);
         setContent(template.content);
-        setFields(ensureSystemPartyFields(template.fields));
+        setFields(ensureTemplateSystemFields(template.fields));
         setTemplateStatus(template.status);
       })
       .catch((caught) => {
@@ -206,13 +218,13 @@ export function TemplateEditorPage() {
       !fieldKeys.includes(key),
   );
   const unusedFields = fields.filter(
-    (field) => !isSystemPartyField(field) && !placeholderKeys.includes(field.key),
+    (field) => !isSystemTemplateField(field) && !placeholderKeys.includes(field.key),
   );
   const visibleFieldEntries = useMemo(
     () =>
       fields
         .map((field, index) => ({ field, index }))
-        .filter(({ field }) => !isSystemPartyField(field)),
+        .filter(({ field }) => !isSystemTemplateField(field)),
     [fields],
   );
   const duplicateKeys = fieldKeys.filter((key, index) => key && fieldKeys.indexOf(key) !== index);
@@ -241,7 +253,7 @@ export function TemplateEditorPage() {
   };
 
   const addField = () => {
-    let suffix = fields.filter((field) => !isSystemPartyField(field)).length + 1;
+    let suffix = fields.filter((field) => !isSystemTemplateField(field)).length + 1;
     let label = `空白项${suffix}`;
     while (fields.some((field) => field.key === label || field.label === label)) {
       suffix += 1;
@@ -261,8 +273,8 @@ export function TemplateEditorPage() {
   };
 
   const removeField = (index: number) => {
-    if (isSystemPartyField(fields[index])) {
-      message.warning("系统生成的主体空白项不可删除");
+    if (isSystemTemplateField(fields[index])) {
+      message.warning("系统生成的空白项不可删除");
       return;
     }
     setFields((current) => current.filter((_, fieldIndex) => fieldIndex !== index));
@@ -288,13 +300,13 @@ export function TemplateEditorPage() {
   const loadSkeleton = () => {
     if (
       hasRichContent(content) ||
-      fields.some((field) => !isSystemPartyField(field))
+      fields.some((field) => !isSystemTemplateField(field))
     ) {
       message.info("当前已有模板内容，基础骨架仅用于空白模板。");
       return;
     }
     setContent(SKELETON_CONTENT);
-    setFields(ensureSystemPartyFields(SKELETON_FIELDS));
+    setFields(ensureTemplateSystemFields(SKELETON_FIELDS));
     message.success("已载入基础合同骨架，请按需调整");
   };
 
@@ -338,7 +350,7 @@ export function TemplateEditorPage() {
       description: description.trim(),
       instructions: instructions.trim(),
       content,
-      fields: ensureSystemPartyFields(fields).map((field) => ({
+      fields: ensureTemplateSystemFields(fields).map((field) => ({
         ...field,
         key: field.key.trim(),
         label: field.label.trim(),
@@ -553,7 +565,7 @@ export function TemplateEditorPage() {
               <Button type="primary" ghost size="small" icon={<PlusOutlined />} onClick={addField}>添加空白项</Button>
             </div>
             <p className="fields-config-help">
-              每个空白项对应业务表单中的一个输入控件，并可单独设置填写要求。甲方、乙方主体信息由系统自动生成，选择主体名称后会带出信用代码、地址、开户行等信息；联系人和联系方式由业务人员手动填写。
+              每个空白项对应业务表单中的一个输入控件，并可单独设置填写要求。甲方、乙方主体信息由系统自动生成，选择主体名称后会带出信用代码、地址、开户行等信息；联系人和联系方式由业务人员手动填写。总金额和总金额（大写）由表格「总额（元）」列自动计算。
             </p>
 
             {visibleFieldEntries.length ? (
@@ -653,7 +665,9 @@ function FieldConfig({
   onRemove: () => void;
 }) {
   const autoFillRole = resolveAutoFill(field);
-  const systemField = isSystemPartyField(field);
+  const systemPartyField = isSystemPartyField(field);
+  const systemAmountField = isSystemAmountField(field);
+  const systemField = systemPartyField || systemAmountField;
   return (
     <div className="field-config-body">
       <div className="field-config-grid">
@@ -680,8 +694,10 @@ function FieldConfig({
             disabled={systemField}
           />
           <span className="field-help-inline">
-            {systemField
-              ? "系统生成的主体字段，字段标识固定，便于正文占位符稳定引用。"
+            {systemAmountField
+              ? "系统自动计算字段，字段标识和类型固定，可在正文中直接引用。"
+              : systemPartyField
+                ? "系统生成的主体字段，字段标识固定，便于正文占位符稳定引用。"
               : "新增空白项时自动取显示名称；支持中文，业务人员看到的就是这个名称。"}
           </span>
         </div>
@@ -703,8 +719,10 @@ function FieldConfig({
             disabled={systemField}
           />
           <span className="field-help-inline">
-            {systemField
-              ? "由系统从主体库自动生成。选择甲方/乙方主体名称后，同侧信用代码、地址、开户行等信息会自动带出；联系人和联系方式需手动填写。"
+            {systemAmountField
+              ? "该字段由系统自动计算，无需配置数据来源。"
+              : systemPartyField
+                ? "由系统从主体库自动生成。选择甲方/乙方主体名称后，同侧信用代码、地址、开户行等信息会自动带出；联系人和联系方式需手动填写。"
               : "选择「主体名称（下拉选择）」可从 mmdy_party_info 选择主体并带出同侧信息；选择「仓库简称（下拉选择并填充地址）」可从 mmdy_warehouse_info 选择仓库，正文填充该仓库的完整地址。"}
           </span>
         </div>

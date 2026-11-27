@@ -45,7 +45,9 @@ import {
   FINAL_PAYMENT_FIELD_KEY,
   PREPAYMENT_FIELD_KEY,
   TOTAL_AMOUNT_FIELD_KEY,
+  TOTAL_AMOUNT_FIELD_KEYS,
   TOTAL_AMOUNT_UPPER_FIELD_KEY,
+  TOTAL_AMOUNT_UPPER_FIELD_KEYS,
   amountToChineseUpper,
   amountToChineseUpperShort,
   autoAmountFieldKind,
@@ -339,17 +341,17 @@ export function ContractComposer({
 
   const autoAmountState = useMemo(() => {
     const keys = new Set(activeFields.map((field) => field.key));
-    if (!keys.has(TOTAL_AMOUNT_FIELD_KEY) && !keys.has(TOTAL_AMOUNT_UPPER_FIELD_KEY)) {
+    const totalKeys = TOTAL_AMOUNT_FIELD_KEYS.filter((key) => keys.has(key));
+    const upperKeys = TOTAL_AMOUNT_UPPER_FIELD_KEYS.filter((key) => keys.has(key));
+    if (!totalKeys.length && !upperKeys.length) {
       return { values: {}, hasColumn: false };
     }
     const result = calculateContractTableTotal(template.content, tableAdjustments);
     if (!result.hasColumn) return { values: {}, hasColumn: false };
     const totalText = result.total.toFixed(2);
     const next: Record<string, string> = {};
-    if (keys.has(TOTAL_AMOUNT_FIELD_KEY)) next[TOTAL_AMOUNT_FIELD_KEY] = totalText;
-    if (keys.has(TOTAL_AMOUNT_UPPER_FIELD_KEY)) {
-      next[TOTAL_AMOUNT_UPPER_FIELD_KEY] = amountToChineseUpper(totalText);
-    }
+    for (const key of totalKeys) next[key] = totalText;
+    for (const key of upperKeys) next[key] = amountToChineseUpper(totalText);
     return { values: next, hasColumn: true };
   }, [template.content, activeFields, tableAdjustments]);
 
@@ -378,7 +380,13 @@ export function ContractComposer({
   const uppercaseSources = useMemo(() => {
     const sources: Record<string, string> = {};
     for (const field of activeFields) {
-      if (field.key === TOTAL_AMOUNT_UPPER_FIELD_KEY) continue;
+      if (
+        TOTAL_AMOUNT_UPPER_FIELD_KEYS.includes(
+          field.key as (typeof TOTAL_AMOUNT_UPPER_FIELD_KEYS)[number],
+        )
+      ) {
+        continue;
+      }
       const baseKey = uppercaseFieldBaseKey(activeFields, field.key);
       if (baseKey && baseKey !== field.key) sources[field.key] = baseKey;
     }
