@@ -5,6 +5,7 @@ import {
   FileProtectOutlined,
   FileTextOutlined,
   PlusOutlined,
+  ReadOutlined,
   SearchOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
@@ -165,6 +166,15 @@ export function TemplatesPage() {
               hidden
               onChange={handleImport}
             />
+            <Button
+              size="large"
+              icon={<ReadOutlined />}
+              onClick={() =>
+                window.location.assign("/docs/contract-template-tutorial.html")
+              }
+            >
+              阅读教程
+            </Button>
             <Button
               size="large"
               icon={<UploadOutlined />}

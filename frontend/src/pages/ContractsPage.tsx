@@ -229,9 +229,7 @@ export function ContractsPage() {
             <Button
               size="large"
               icon={<ReadOutlined />}
-              onClick={() =>
-                window.open("/docs/contract-creation-tutorial.html", "_blank", "noopener,noreferrer")
-              }
+              onClick={() => window.location.assign("/docs/contract-creation-tutorial.html")}
             >
               阅读教程
             </Button>
