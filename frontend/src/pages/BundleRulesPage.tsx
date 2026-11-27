@@ -188,7 +188,9 @@ export function BundleRulesPage() {
             <Select
               showSearch
               optionFilterProp="label"
-              options={templates.map((item) => ({ label: item.name, value: item.id }))}
+              options={templates
+                .filter((item) => item.category !== "通用")
+                .map((item) => ({ label: item.name, value: item.id }))}
             />
           </Form.Item>
           <Form.Item
@@ -199,7 +201,9 @@ export function BundleRulesPage() {
             <Select
               showSearch
               optionFilterProp="label"
-              options={templates.map((item) => ({ label: item.name, value: item.id }))}
+              options={templates
+                .filter((item) => item.category === "通用")
+                .map((item) => ({ label: item.name, value: item.id }))}
             />
           </Form.Item>
           <Form.Item name="enabled" label="启用" valuePropName="checked">

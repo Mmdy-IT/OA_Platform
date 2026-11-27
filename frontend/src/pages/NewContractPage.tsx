@@ -40,9 +40,12 @@ export function NewContractPage() {
       .templates()
       .then((result) => {
         if (!active) return;
-        setTemplates(result.items);
+        const selectableTemplates = result.items.filter(
+          (item) => item.category !== "通用",
+        );
+        setTemplates(selectableTemplates);
         const requested = Number(searchParams.get("template"));
-        if (requested && result.items.some((item) => item.id === requested)) {
+        if (requested && selectableTemplates.some((item) => item.id === requested)) {
           setSelectedId(requested);
         }
       })

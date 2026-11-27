@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS contracts (
     template_id INTEGER REFERENCES templates(id) ON DELETE SET NULL,
     template_name TEXT NOT NULL,
     template_version TEXT NOT NULL,
+    template_category TEXT NOT NULL DEFAULT '',
     template_content TEXT NOT NULL,
     fields_schema_json TEXT NOT NULL DEFAULT '[]',
     title TEXT NOT NULL,
@@ -184,6 +185,21 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE contracts ADD COLUMN bundle_id INTEGER REFERENCES contract_bundles(id)"
             )
+        if "template_category" not in contract_columns:
+            conn.execute(
+                "ALTER TABLE contracts ADD COLUMN template_category TEXT NOT NULL DEFAULT ''"
+            )
+        conn.execute(
+            """
+            UPDATE contracts
+               SET template_category = COALESCE(
+                   (SELECT t.category FROM templates t WHERE t.id = contracts.template_id),
+                   template_category,
+                   ''
+               )
+             WHERE template_category = ''
+            """
+        )
         bundle_rule_columns = {
             row["name"]
             for row in conn.execute("PRAGMA table_info(contract_bundle_rules)").fetchall()

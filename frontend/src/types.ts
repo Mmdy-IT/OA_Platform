@@ -126,6 +126,7 @@ export interface ContractSummary {
   title: string;
   template_name: string;
   template_version: string;
+  template_category: string;
   bundle_id: number | null;
   status: ContractStatus;
   creator_id: number;
@@ -164,6 +165,7 @@ export interface ContractBundleMember {
   contract_no: string;
   title: string;
   template_name: string;
+  template_category: string;
   status: ContractStatus;
   updated_at: string;
 }

@@ -90,7 +90,7 @@ def test_contract_number_uses_party_code_and_daily_sequence(client, login_as, mo
         json={
             "name": "编号规则测试模板",
             "contract_code": "HT",
-            "category": "通用",
+            "category": "测试类",
             "description": "",
             "instructions": "",
             "content": "<p>{{甲方}}</p>",
@@ -142,7 +142,7 @@ def test_contract_creation_requires_party_number(client, login_as, monkeypatch):
         "/api/templates",
         json={
             "name": "甲方编码缺失测试模板",
-            "category": "通用",
+            "category": "测试类",
             "description": "",
             "instructions": "",
             "content": "<p>{{甲方}}</p>",
@@ -433,7 +433,7 @@ def test_permanently_deleting_archived_template_keeps_contract_snapshot(client, 
         "/api/templates",
         json={
             "name": "历史合同快照测试模板",
-            "category": "通用",
+            "category": "测试类",
             "description": "",
             "instructions": "",
             "content": "<p>模板正文：{{甲方}}</p>",

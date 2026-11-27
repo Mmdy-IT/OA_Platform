@@ -73,7 +73,7 @@ export function EditContractPage() {
     "name" | "category" | "version" | "description" | "instructions" | "content" | "fields"
   > = {
     name: contract.template_name,
-    category: "合同模板",
+    category: contract.template_category || "合同模板",
     version: contract.template_version,
     description: "当前合同使用提交时保存的模板快照，模板后续更新不会改变本合同内容。",
     instructions: "请根据法务审核意见修改合同内容。模板结构由法务锁定，仅可修改业务空白项。",
@@ -132,6 +132,9 @@ export function EditContractPage() {
         initialValues={contract.field_values}
         initialTableAdjustments={contract.table_adjustments}
         contractNo={contract.contract_no}
+        hideContractNumber={
+          contract.template_category === "通用" && !!contract.bundle_id
+        }
         banner={
           contract.status === "rejected" && contract.review_comment ? (
             <Alert

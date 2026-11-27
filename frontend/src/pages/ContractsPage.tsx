@@ -94,12 +94,18 @@ export function ContractsPage() {
 
   const removeContract = (contract: ContractSummary) => {
     Modal.confirm({
-      title: "确认删除这份合同？",
+      title: contract.bundle_id ? "删除合同包内全部文件？" : "确认删除这份合同？",
       content: (
         <div className="confirm-copy">
-          <p>
-            即将删除《{contract.title}》，合同内容及全部流转记录将无法恢复。
-          </p>
+          {contract.bundle_id ? (
+            <p>
+              该合同属于合同包，将同时删除合同包内的两个文件（主合同与通用合同），是否确认删除？
+            </p>
+          ) : (
+            <p>
+              即将删除《{contract.title}》，合同内容及全部流转记录将无法恢复。
+            </p>
+          )}
           <p className="muted-text">此操作不可撤销，请再次确认。</p>
         </div>
       ),
@@ -110,7 +116,13 @@ export function ContractsPage() {
         setDeletingId(contract.id);
         try {
           await api.deleteContract(contract.id);
-          setContracts((current) => current.filter((item) => item.id !== contract.id));
+          setContracts((current) =>
+            current.filter(
+              (item) =>
+                item.id !== contract.id &&
+                (!contract.bundle_id || item.bundle_id !== contract.bundle_id),
+            ),
+          );
           message.success("合同已删除");
         } catch (caught) {
           message.error(caught instanceof ApiError ? caught.message : "删除失败，请稍后重试");
@@ -133,7 +145,7 @@ export function ContractsPage() {
           </div>
           <div>
             <strong>{record.title}</strong>
-            <span>{record.contract_no}</span>
+            {record.contract_no && <span>{record.contract_no}</span>}
           </div>
         </div>
       ),
@@ -193,8 +205,7 @@ export function ContractsPage() {
               className="row-action"
               icon={<DeleteOutlined />}
               loading={deletingId === record.id}
-              disabled={!!record.bundle_id}
-              title={record.bundle_id ? "合同包合同不能单独删除" : "删除合同"}
+              title="删除合同"
               onClick={(event) => {
                 event.stopPropagation();
                 removeContract(record);

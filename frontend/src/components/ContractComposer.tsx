@@ -134,6 +134,7 @@ interface ContractComposerProps {
   initialValues?: Record<string, string>;
   initialTableAdjustments?: ContractTableAdjustments;
   contractNo?: string;
+  hideContractNumber?: boolean;
   banner?: ReactNode;
   onChangeTemplate?: () => void;
   backAction?: ReactNode;
@@ -155,6 +156,7 @@ export function ContractComposer({
   initialValues = {},
   initialTableAdjustments = {},
   contractNo,
+  hideContractNumber = false,
   banner,
   onChangeTemplate,
   backAction,
@@ -997,6 +999,7 @@ export function ContractComposer({
               fields={template.fields}
               tableAdjustments={tableAdjustments}
               contractNo={contractNo}
+              hideContractNumber={hideContractNumber}
               templateName={`${template.name} · ${template.version}`}
               compact
             />

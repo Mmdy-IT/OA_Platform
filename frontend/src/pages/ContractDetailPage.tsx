@@ -162,9 +162,11 @@ export function ContractDetailPage() {
 
   const remove = () => {
     Modal.confirm({
-      title: "删除这份合同？",
+      title: contract.bundle ? "删除合同包内全部文件？" : "删除这份合同？",
       icon: <ExclamationCircleOutlined style={{ color: "#d64545" }} />,
-      content: "删除后合同及流转记录将无法恢复，此操作不可撤销。",
+      content: contract.bundle
+        ? "该合同属于合同包，将同时删除合同包内的两个文件（主合同与通用合同），是否确认删除？"
+        : "删除后合同及流转记录将无法恢复，此操作不可撤销。",
       okText: "确认删除",
       okButtonProps: { danger: true },
       cancelText: "取消",
@@ -222,7 +224,11 @@ export function ContractDetailPage() {
   return (
     <div className="page-stack detail-page">
       <PageHeader
-        eyebrow={`CONTRACT · ${contract.contract_no}`}
+        eyebrow={
+          contract.template_category === "通用" && contract.bundle_id
+            ? "CONTRACT · 配套通用合同"
+            : `CONTRACT · ${contract.contract_no}`
+        }
         title={contract.title}
         description={
           <span className="detail-subtitle">
@@ -323,6 +329,9 @@ export function ContractDetailPage() {
               fields={contract.fields_schema}
               tableAdjustments={contract.table_adjustments}
               contractNo={contract.contract_no}
+              hideContractNumber={
+                contract.template_category === "通用" && !!contract.bundle_id
+              }
               templateName={`${contract.template_name} · ${contract.template_version}`}
               highlight={false}
             />
@@ -352,7 +361,10 @@ export function ContractDetailPage() {
                   >
                     <span>
                       <strong>{member.title}</strong>
-                      <small>{member.contract_no} · {member.template_name}</small>
+                      <small>
+                        {member.contract_no ? `${member.contract_no} · ` : ""}
+                        {member.template_name}
+                      </small>
                     </span>
                     <StatusTag status={member.status} />
                   </button>
@@ -416,10 +428,14 @@ export function ContractDetailPage() {
           <div className="panel info-panel">
             <div className="panel-head">
               <div><span className="panel-eyebrow">CONTRACT INFO</span><h3>合同信息</h3></div>
-              <Button type="text" size="small" icon={<CopyOutlined />} onClick={copyNumber} />
+              {contract.contract_no && (
+                <Button type="text" size="small" icon={<CopyOutlined />} onClick={copyNumber} />
+              )}
             </div>
             <Descriptions column={1} size="small" className="info-descriptions" colon={false}>
-              <Descriptions.Item label="合同编号">{contract.contract_no}</Descriptions.Item>
+              {contract.contract_no && (
+                <Descriptions.Item label="合同编号">{contract.contract_no}</Descriptions.Item>
+              )}
               <Descriptions.Item label="合同编码">{contract.contract_code}</Descriptions.Item>
               <Descriptions.Item label="当前状态"><StatusTag status={contract.status} /></Descriptions.Item>
               <Descriptions.Item label="合同模板">{contract.template_name}</Descriptions.Item>

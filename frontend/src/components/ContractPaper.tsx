@@ -17,6 +17,7 @@ interface ContractPaperProps {
   fields?: TemplateField[];
   tableAdjustments?: ContractTableAdjustments;
   contractNo?: string;
+  hideContractNumber?: boolean;
   templateName?: string;
   highlight?: boolean;
   compact?: boolean;
@@ -30,6 +31,7 @@ export function ContractPaper({
   fields = [],
   tableAdjustments,
   contractNo,
+  hideContractNumber = false,
   templateName,
   highlight = true,
   compact = false,
@@ -43,9 +45,11 @@ export function ContractPaper({
     () => ({
       ...values,
       ...paymentValues,
-      [CONTRACT_NUMBER_PLACEHOLDER]: contractNo?.trim() || "系统自动生成",
+      [CONTRACT_NUMBER_PLACEHOLDER]: hideContractNumber
+        ? "\u200b"
+        : contractNo?.trim() || "系统自动生成",
     }),
-    [values, paymentValues, contractNo],
+    [values, paymentValues, contractNo, hideContractNumber],
   );
   const bodyHtml = useMemo(
     () =>
@@ -61,7 +65,7 @@ export function ContractPaper({
   );
   const firstHeaderHtml = useMemo(() => {
     const meta = [
-      contractNo ? `<span>编号 ${escapeHtml(contractNo)}</span>` : "",
+      contractNo && !hideContractNumber ? `<span>编号 ${escapeHtml(contractNo)}</span>` : "",
       templateName ? `<span>${escapeHtml(templateName)}</span>` : "",
     ].join("");
     return [
@@ -70,16 +74,16 @@ export function ContractPaper({
       meta ? `<div class="paper-meta-line">${meta}</div>` : "",
       '<div class="paper-rule"></div>',
     ].join("");
-  }, [contractNo, templateName, title]);
+  }, [contractNo, hideContractNumber, templateName, title]);
   const nextHeaderHtml = useMemo(
     () =>
       [
         '<div class="paper-continuation-head">',
         `<span>${escapeHtml(title)}（续）</span>`,
-        `<span>${escapeHtml(contractNo || "MMDY · CONTRACT")}</span>`,
+        `<span>${escapeHtml(hideContractNumber ? "" : contractNo || "MMDY · CONTRACT")}</span>`,
         "</div>",
       ].join(""),
-    [contractNo, title],
+    [contractNo, hideContractNumber, title],
   );
   const containerRef = useRef<HTMLDivElement>(null);
   const [pageWidth, setPageWidth] = useState(780);
