@@ -1,11 +1,52 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 
 from .db import db_cursor, utcnow
 from .security import hash_password
 from .seed_data import TEMPLATE_SEEDS
+
+
+logger = logging.getLogger(__name__)
+
+SEED_CONTRACT_TITLES = (
+    "2026 年度办公电脑采购合同",
+    "客户数据中台建设技术服务合同",
+    "产品联合推广保密协议",
+    "园区物业服务采购合同（草稿）",
+)
+
+
+def _remove_seed_contracts() -> None:
+    placeholders = ", ".join(["?"] * len(SEED_CONTRACT_TITLES))
+    with db_cursor(commit=True) as conn:
+        rows = conn.execute(
+            f"""
+            SELECT id
+              FROM contracts
+             WHERE title IN ({placeholders})
+               AND creator_id IN (SELECT id FROM users WHERE username = 'business')
+            """,
+            SEED_CONTRACT_TITLES,
+        ).fetchall()
+        contract_ids = [int(row["id"]) for row in rows]
+        if not contract_ids:
+            return
+        id_placeholders = ", ".join(["?"] * len(contract_ids))
+        conn.execute(
+            f"DELETE FROM contracts WHERE id IN ({id_placeholders})",
+            contract_ids,
+        )
+
+    from . import contract_archive
+
+    for contract_id in contract_ids:
+        try:
+            contract_archive.delete_contract_record(oa_contract_id=contract_id)
+        except contract_archive.ContractArchiveError:
+            logger.warning("Failed to delete seed contract archive %s", contract_id)
 
 
 def _iso(days_ago: float = 0, hour: int | None = None) -> str:
@@ -20,6 +61,7 @@ def _future_date(days: int) -> str:
 
 
 def seed_database() -> None:
+    _remove_seed_contracts()
     with db_cursor(commit=True) as conn:
         existing = conn.execute("SELECT COUNT(*) AS total FROM users").fetchone()["total"]
         if existing:
@@ -67,6 +109,9 @@ def seed_database() -> None:
                 ),
             )
             template_ids[item["name"]] = cursor.lastrowid
+
+        # Sample contracts are intentionally no longer generated.
+        return
 
         templates = {
             row["name"]: dict(row)

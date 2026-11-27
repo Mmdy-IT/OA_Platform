@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from backend import contract_archive, party_db
+from backend import contract_archive, party_db, seed
 from backend.contract_number import contract_serial_number
 from backend.pdf import _contract_document_values, _format_field_values, render_contract_text
 
@@ -59,7 +59,9 @@ def test_business_to_legal_contract_flow(client, login_as):
     ).status_code == 403
 
     login_as(client, "legal", "Legal@123")
-    pending = client.get("/api/contracts", params={"status": "pending"}).json()["items"]
+    pending = client.get(
+        "/api/contracts", params={"status": "pending", "scope": "all"}
+    ).json()["items"]
     assert any(item["id"] == contract["id"] for item in pending)
 
     approved = client.post(
@@ -277,6 +279,39 @@ def test_deleting_draft_removes_company_record(client, login_as, monkeypatch):
 
     assert response.status_code == 200, response.text
     assert deleted == [{"oa_contract_id": contract["id"]}]
+
+
+def test_seed_cleanup_removes_legacy_sample_contracts(client, login_as):
+    login_as(client, "business", "Business@123")
+    template = client.get("/api/templates").json()["items"][0]
+    created = client.post(
+        "/api/contracts",
+        json={
+            "template_id": template["id"],
+            "title": seed.SEED_CONTRACT_TITLES[0],
+            "field_values": {},
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    seed._remove_seed_contracts()
+
+    remaining = client.get("/api/contracts").json()["items"]
+    assert all(item["id"] != created.json()["id"] for item in remaining)
+
+
+def test_legal_can_delete_another_users_contract(client, login_as):
+    login_as(client, "business", "Business@123")
+    template = client.get("/api/templates").json()["items"][0]
+    created = client.post(
+        "/api/contracts",
+        json={"template_id": template["id"], "title": "法务删除权限测试合同"},
+    )
+    assert created.status_code == 201, created.text
+
+    login_as(client, "legal", "Legal@123")
+    deleted = client.delete(f"/api/contracts/{created.json()['id']}")
+    assert deleted.status_code == 200, deleted.text
 
 
 def test_pdf_currency_values_use_plain_thousands_format():

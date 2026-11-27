@@ -193,7 +193,7 @@ def test_business_cannot_access_review_module(client, login_as):
     assert "子模块" in response.json()["detail"]
 
 
-def test_granted_review_permission_expands_contract_scope(client, login_as, monkeypatch):
+def test_review_scope_requires_explicit_all_parameter(client, login_as, monkeypatch):
     login_as(client, "legal", "Legal@123")
     template = client.get("/api/templates").json()["items"][0]
     created = client.post(
@@ -231,7 +231,10 @@ def test_granted_review_permission_expands_contract_scope(client, login_as, monk
     monkeypatch.setattr("backend.app.resolve_access_profile", custom_profile)
 
     login_as(client, "business", "Business@123")
-    expanded = client.get("/api/contracts").json()["items"]
+    own_with_review_permission = client.get("/api/contracts").json()["items"]
+    assert legal_contract_id not in {item["id"] for item in own_with_review_permission}
+
+    expanded = client.get("/api/contracts", params={"scope": "all"}).json()["items"]
     assert legal_contract_id in {item["id"] for item in expanded}
 
 

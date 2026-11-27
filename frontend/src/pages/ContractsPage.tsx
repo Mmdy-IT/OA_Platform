@@ -1,16 +1,17 @@
 import {
   ArrowRightOutlined,
   ClockCircleOutlined,
+  DeleteOutlined,
   FileTextOutlined,
   PlusOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
-import { Button, Input, Table, Tag } from "antd";
+import { Button, Input, Modal, Table, Tag, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../api";
-import { hasPermission, useAuth } from "../auth";
+import { useAuth } from "../auth";
 import { PageHeader } from "../components/PageHeader";
 import { StatusTag } from "../components/StatusTag";
 import type { ContractStatus, ContractSummary } from "../types";
@@ -32,12 +33,13 @@ export function ContractsPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const statusParam = searchParams.get("status") as ContractStatus | null;
   const activeStatus = STATUS_FILTERS.some((item) => item.key === statusParam)
     ? (statusParam as ContractStatus)
     : "all";
-  const isReviewer = hasPermission(user, "reviews");
+  const canManage = user?.role === "admin" || user?.role === "legal";
 
   useEffect(() => {
     let active = true;
@@ -90,6 +92,35 @@ export function ContractsPage() {
 
   const openContract = (contract: ContractSummary) => navigate(`/contracts/${contract.id}`);
 
+  const removeContract = (contract: ContractSummary) => {
+    Modal.confirm({
+      title: "确认删除这份合同？",
+      content: (
+        <div className="confirm-copy">
+          <p>
+            即将删除《{contract.title}》，合同内容及全部流转记录将无法恢复。
+          </p>
+          <p className="muted-text">此操作不可撤销，请再次确认。</p>
+        </div>
+      ),
+      okText: "确认删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        setDeletingId(contract.id);
+        try {
+          await api.deleteContract(contract.id);
+          setContracts((current) => current.filter((item) => item.id !== contract.id));
+          message.success("合同已删除");
+        } catch (caught) {
+          message.error(caught instanceof ApiError ? caught.message : "删除失败，请稍后重试");
+        } finally {
+          setDeletingId(null);
+        }
+      },
+    });
+  };
+
   const columns: ColumnsType<ContractSummary> = [
     {
       title: "合同",
@@ -118,17 +149,6 @@ export function ContractsPage() {
         </div>
       ),
     },
-    ...(isReviewer
-      ? [
-          {
-            title: "发起人",
-            dataIndex: "creator_name",
-            key: "creator_name",
-            width: 150,
-            render: (value: string) => <span className="muted-cell">{value}</span>,
-          },
-        ]
-      : []),
     {
       title: "状态",
       dataIndex: "status",
@@ -151,20 +171,37 @@ export function ContractsPage() {
     {
       title: "",
       key: "action",
-      width: 82,
+      width: canManage ? 160 : 82,
       align: "right",
       render: (_, record) => (
-        <Button
-          type="text"
-          className="row-action"
-          onClick={(event) => {
-            event.stopPropagation();
-            openContract(record);
-          }}
-        >
-          {record.status === "pending" && isReviewer && record.creator_id !== user?.id ? "审核" : "查看"}
-          <ArrowRightOutlined />
-        </Button>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+          <Button
+            type="text"
+            className="row-action"
+            onClick={(event) => {
+              event.stopPropagation();
+              openContract(record);
+            }}
+          >
+            查看
+            <ArrowRightOutlined />
+          </Button>
+          {canManage && (
+            <Button
+              type="text"
+              danger
+              className="row-action"
+              icon={<DeleteOutlined />}
+              loading={deletingId === record.id}
+              disabled={!!record.bundle_id}
+              title={record.bundle_id ? "合同包合同不能单独删除" : "删除合同"}
+              onClick={(event) => {
+                event.stopPropagation();
+                removeContract(record);
+              }}
+            />
+          )}
+        </div>
       ),
     },
   ];
@@ -173,12 +210,8 @@ export function ContractsPage() {
     <div className="page-stack">
       <PageHeader
         eyebrow="CONTRACT REGISTER"
-        title={isReviewer ? "全部合同" : "我的合同"}
-        description={
-          isReviewer
-            ? "查看公司全部合同，进入合同详情完成法务审核、追踪流转记录。"
-            : "管理由你发起的合同，完成填写、提交审核，并下载已通过的正式 PDF。"
-        }
+        title="我的合同"
+        description="仅查看和管理由你本人发起的合同，完成填写、提交审核，并下载已通过的正式 PDF。"
         actions={
           <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => navigate("/contracts/new")}>
             新建合同
@@ -244,7 +277,7 @@ export function ContractsPage() {
               </div>
             ),
           }}
-          scroll={{ x: 900 }}
+          scroll={{ x: canManage ? 980 : 900 }}
         />
       </div>
 
@@ -254,9 +287,7 @@ export function ContractsPage() {
           <strong>审核通过后才能下载正式 PDF</strong>
           <span>草稿和待审核阶段可在线预览合同内容；被驳回后可根据审核意见修改并重新提交。</span>
         </div>
-        {!isReviewer && (
-          <Tag color="blue" className="help-strip-tag">状态：待审核 / 已通过 / 已驳回</Tag>
-        )}
+        <Tag color="blue" className="help-strip-tag">状态：待审核 / 已通过 / 已驳回</Tag>
       </div>
     </div>
   );

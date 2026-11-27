@@ -142,11 +142,12 @@ export const api = {
       method: "DELETE",
     }),
 
-  contracts: (params?: { q?: string; status?: string; template_id?: number }) => {
+  contracts: (params?: { q?: string; status?: string; template_id?: number; scope?: "mine" | "all" }) => {
     const search = new URLSearchParams();
     if (params?.q) search.set("q", params.q);
     if (params?.status) search.set("status", params.status);
     if (params?.template_id) search.set("template_id", String(params.template_id));
+    if (params?.scope) search.set("scope", params.scope);
     const query = search.toString();
     return request<ListResponse<ContractSummary>>(`/contracts${query ? `?${query}` : ""}`);
   },

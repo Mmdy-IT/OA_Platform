@@ -34,7 +34,7 @@ export function ReviewInboxPage() {
   useEffect(() => {
     let active = true;
     api
-      .contracts({ status: "pending" })
+      .contracts({ status: "pending", scope: "all" })
       .then((result) => {
         if (active) {
           setContracts(

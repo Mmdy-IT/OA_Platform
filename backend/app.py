@@ -1212,11 +1212,15 @@ def list_contracts(
     q: str = "",
     contract_status: str = Query(default="", alias="status"),
     template_id: int | None = None,
+    scope: str = "mine",
     user: dict = Depends(require_permission("contracts", "reviews")),
 ):
     clauses = []
     params: list = []
-    if "reviews" not in set(user.get("permissions") or []):
+    if scope == "all":
+        if "reviews" not in set(user.get("permissions") or []):
+            raise HTTPException(status_code=403, detail="没有权限查看全部合同")
+    else:
         clauses.append("creator_id = ?")
         params.append(user["id"])
     if contract_status in {"draft", "pending", "approved", "rejected"}:
@@ -1748,9 +1752,9 @@ def delete_contract(
         row = conn.execute("SELECT * FROM contracts WHERE id = ?", (contract_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="合同不存在")
-        if row["creator_id"] != user["id"] and user["role"] != "admin":
+        if row["creator_id"] != user["id"] and user["role"] not in {"admin", "legal"}:
             raise HTTPException(status_code=403, detail="无权删除该合同")
-        if row["status"] not in {"draft", "rejected"}:
+        if row["status"] not in {"draft", "rejected"} and user["role"] not in {"admin", "legal"}:
             raise HTTPException(status_code=409, detail="仅草稿或已驳回的合同可以删除")
         if row["bundle_id"]:
             raise HTTPException(
