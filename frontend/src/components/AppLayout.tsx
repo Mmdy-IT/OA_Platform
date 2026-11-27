@@ -17,7 +17,7 @@ import { Avatar, Badge, Button, Dropdown, Layout, Menu, Popover, Tag } from "ant
 import type { MenuProps } from "antd";
 import dayjs from "dayjs";
 import { useEffect, useMemo, useState } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import brandLogo from "../assets/brand-logo-transparent.png";
 import { api } from "../api";
 import { useAuth } from "../auth";
@@ -36,6 +36,17 @@ const PAGE_NAMES: Record<string, string> = {
   "/bundle-rules": "合同管理 / 合同包规则",
   "/admin/permissions": "系统管理 / 权限管理",
 };
+
+function modulePathFor(pathname: string): string {
+  if (pathname.startsWith("/admin/permissions")) return "/admin/permissions";
+  if (pathname.startsWith("/reviews")) return "/reviews";
+  if (pathname.startsWith("/templates")) return "/templates";
+  if (pathname.startsWith("/bundle-rules")) return "/bundle-rules";
+  if (pathname.startsWith("/party-a")) return "/party-a";
+  if (pathname.startsWith("/parties")) return "/parties";
+  if (pathname.startsWith("/contracts")) return "/contracts";
+  return "/dashboard";
+}
 
 export function AppLayout() {
   const { user, logout } = useAuth();
@@ -79,6 +90,10 @@ export function AppLayout() {
     const found = Object.keys(PAGE_NAMES).find((path) => location.pathname.startsWith(path));
     return found ? PAGE_NAMES[found] : "绵绵聚道";
   }, [location.pathname]);
+  const currentPath = useMemo(
+    () => modulePathFor(location.pathname),
+    [location.pathname],
+  );
 
   const menuItems = useMemo<MenuProps["items"]>(() => {
     const granted = new Set(user?.permissions || []);
@@ -158,16 +173,10 @@ export function AppLayout() {
     return items;
   }, [user?.permissions, user?.role]);
 
-  const selectedKey = useMemo(() => {
-    if (location.pathname.startsWith("/admin/permissions")) return "/admin/permissions";
-    if (location.pathname.startsWith("/reviews")) return "/reviews";
-    if (location.pathname.startsWith("/templates")) return "/templates";
-    if (location.pathname.startsWith("/bundle-rules")) return "/bundle-rules";
-    if (location.pathname.startsWith("/contracts")) return "/contracts";
-    if (location.pathname.startsWith("/party-a")) return "/party-a";
-    if (location.pathname.startsWith("/parties")) return "/parties";
-    return "/dashboard";
-  }, [location.pathname]);
+  const selectedKey = useMemo(
+    () => modulePathFor(location.pathname),
+    [location.pathname],
+  );
 
   const handleLogout = async () => {
     await logout();
@@ -265,7 +274,11 @@ export function AppLayout() {
             <div className="topbar-breadcrumb">
               <span>绵绵聚道</span>
               <span className="crumb-divider">/</span>
-              <strong>{currentPage}</strong>
+              <strong>
+                <Link to={currentPath} className="crumb-current-link">
+                  {currentPage}
+                </Link>
+              </strong>
             </div>
           </div>
           <div className="topbar-right">
