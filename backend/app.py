@@ -404,7 +404,8 @@ def _insert_contract_record(
     bundle_id: int | None = None,
     contract_code_override: str | None = None,
 ) -> int:
-    fields = _load_json(template_row["fields_json"], [])
+    all_fields = _load_json(template_row["fields_json"], [])
+    fields = _fields_used_in_content(template_row["content"], all_fields)
     values = normalize_field_values(field_values)
     values = warehouse_db.resolve_warehouse_values(values, fields)
     adjustments = normalize_table_adjustments(
@@ -480,7 +481,8 @@ def _submit_bundle(conn, row, user: dict) -> dict:
     for member in members:
         if member["status"] in {"pending", "approved"}:
             continue
-        fields = _load_json(member["fields_schema_json"], [])
+        all_fields = _load_json(member["fields_schema_json"], [])
+        fields = _fields_used_in_content(member["template_content"], all_fields)
         values = _load_json(member["field_values_json"], {})
         adjustments = _load_json(member["table_adjustments_json"], {})
         adjustments = apply_table_row_auto_values(member["template_content"], adjustments)
@@ -506,7 +508,8 @@ def _submit_bundle(conn, row, user: dict) -> dict:
     for member in members:
         if member["status"] in {"pending", "approved"}:
             continue
-        fields = _load_json(member["fields_schema_json"], [])
+        all_fields = _load_json(member["fields_schema_json"], [])
+        fields = _fields_used_in_content(member["template_content"], all_fields)
         values = _load_json(member["field_values_json"], {})
         adjustments = _load_json(member["table_adjustments_json"], {})
         adjustments = apply_table_row_auto_values(member["template_content"], adjustments)
@@ -689,12 +692,18 @@ def _create_missing_bundle_companions(conn, row, user: dict) -> list[int]:
 
 
 def _contract_detail(conn, row) -> dict:
-    fields = _filter_system_fields(_load_json(row["fields_schema_json"], []))
+    fields = _filter_system_fields(
+        _fields_used_in_content(
+            row["template_content"],
+            _load_json(row["fields_schema_json"], []),
+        )
+    )
     adjustments = apply_table_row_auto_values(
         row["template_content"], _load_json(row["table_adjustments_json"], {})
     )
     values = _load_json(row["field_values_json"], {})
     values = warehouse_db.resolve_warehouse_values(values, fields)
+    values = _filter_values(values, fields)
     data = _contract_summary(row)
     data.update(
         {
@@ -755,6 +764,11 @@ def _fetch_contract(conn, contract_id: int, user: dict) -> dict:
 def _filter_values(values: dict[str, str], fields: list[dict]) -> dict[str, str]:
     allowed = {field["key"] for field in fields}
     return {key: value for key, value in values.items() if key in allowed}
+
+
+def _fields_used_in_content(content: str, fields: list[dict]) -> list[dict]:
+    used = set(extract_placeholders(content))
+    return [field for field in fields if str(field.get("key") or "") in used]
 
 
 def _ensure_valid_field_values(fields: list[dict], values: dict[str, str]) -> None:
@@ -1700,7 +1714,10 @@ def update_contract(
             ).fetchone()
             if primary:
                 title = f"{primary['title']}·{row['template_name']}"[:200]
-        fields = _load_json(row["fields_schema_json"], [])
+        fields = _fields_used_in_content(
+            row["template_content"],
+            _load_json(row["fields_schema_json"], []),
+        )
         current_values = _load_json(row["field_values_json"], {})
         current_adjustments = _load_json(row["table_adjustments_json"], {})
         if payload.field_values is not None:
@@ -1772,7 +1789,10 @@ def submit_contract(
         _ensure_bundle_companion(conn, row)
         if row["bundle_id"]:
             return _submit_bundle(conn, row, user)
-        fields = _load_json(row["fields_schema_json"], [])
+        fields = _fields_used_in_content(
+            row["template_content"],
+            _load_json(row["fields_schema_json"], []),
+        )
         values = _load_json(row["field_values_json"], {})
         adjustments = _load_json(row["table_adjustments_json"], {})
         adjustments = apply_table_row_auto_values(row["template_content"], adjustments)

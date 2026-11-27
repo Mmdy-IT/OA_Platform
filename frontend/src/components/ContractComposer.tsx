@@ -26,6 +26,7 @@ import type {
   WarehouseInfo,
 } from "../types";
 import {
+  extractPlaceholderKeys,
   inspectContractTables,
   isNewContractTableRow,
   type ContractTableModel,
@@ -179,21 +180,25 @@ export function ContractComposer({
   const [warehouses, setWarehouses] = useState<WarehouseInfo[]>([]);
   const [warehouseLoading, setWarehouseLoading] = useState(true);
   const [warehouseError, setWarehouseError] = useState("");
+  const activeFields = useMemo(() => {
+    const usedKeys = new Set(extractPlaceholderKeys(template.content));
+    return template.fields.filter((field) => usedKeys.has(field.key));
+  }, [template.content, template.fields]);
   const hasPartyFields = useMemo(
     () =>
-      template.fields.some((field) => {
+      activeFields.some((field) => {
         const role = resolveAutoFill(field);
         return !!role && isPartyAutoFillRole(role);
       }),
-    [template.fields],
+    [activeFields],
   );
   const hasWarehouseFields = useMemo(
     () =>
-      template.fields.some((field) => {
+      activeFields.some((field) => {
         const role = resolveAutoFill(field);
         return !!role && isWarehouseAutoFillRole(role);
       }),
-    [template.fields],
+    [activeFields],
   );
 
   useEffect(() => {
@@ -239,7 +244,7 @@ export function ContractComposer({
     setValues((current) => {
       const next = { ...current };
       let changed = false;
-      for (const field of template.fields) {
+      for (const field of activeFields) {
         const role = resolveAutoFill(field);
         if (!role || !isPartyAutoFillRole(role) || !isPartyNameRole(role)) continue;
         const side = roleSide(role);
@@ -247,7 +252,7 @@ export function ContractComposer({
           `${side === "party_a" ? "甲方" : "乙方"}|${current[field.key] || ""}`,
         );
         if (!party) continue;
-        for (const other of template.fields) {
+        for (const other of activeFields) {
           const otherRole = resolveAutoFill(other);
           if (
             !otherRole ||
@@ -264,7 +269,7 @@ export function ContractComposer({
       }
       return changed ? next : current;
     });
-  }, [parties, partyByName, template.fields]);
+  }, [parties, partyByName, activeFields]);
 
   useEffect(() => {
     if (!hasWarehouseFields) {
@@ -307,7 +312,7 @@ export function ContractComposer({
     setValues((current) => {
       const next = { ...current };
       let changed = false;
-      for (const field of template.fields) {
+      for (const field of activeFields) {
         if (resolveAutoFill(field) !== "warehouse_short_name") continue;
         const raw = (current[field.key] || "").trim();
         const warehouse = warehouseByName.get(raw) || warehouseByAddress.get(raw);
@@ -316,7 +321,7 @@ export function ContractComposer({
           next[field.key] = warehouse.warehouse_address;
           changed = true;
         }
-        for (const other of template.fields) {
+        for (const other of activeFields) {
           if (resolveAutoFill(other) !== "warehouse_address") continue;
           if ((current[other.key] || "").trim()) continue;
           next[other.key] = warehouse.warehouse_address;
@@ -325,7 +330,7 @@ export function ContractComposer({
       }
       return changed ? next : current;
     });
-  }, [warehouses, warehouseByName, warehouseByAddress, template.fields]);
+  }, [warehouses, warehouseByName, warehouseByAddress, activeFields]);
 
   const tableModels = useMemo(
     () => inspectContractTables(template.content).filter((model) => model.bodyRows.length > 0),
@@ -333,7 +338,7 @@ export function ContractComposer({
   );
 
   const autoAmountState = useMemo(() => {
-    const keys = new Set(template.fields.map((field) => field.key));
+    const keys = new Set(activeFields.map((field) => field.key));
     if (!keys.has(TOTAL_AMOUNT_FIELD_KEY) && !keys.has(TOTAL_AMOUNT_UPPER_FIELD_KEY)) {
       return { values: {}, hasColumn: false };
     }
@@ -346,17 +351,17 @@ export function ContractComposer({
       next[TOTAL_AMOUNT_UPPER_FIELD_KEY] = amountToChineseUpper(totalText);
     }
     return { values: next, hasColumn: true };
-  }, [template.content, template.fields, tableAdjustments]);
+  }, [template.content, activeFields, tableAdjustments]);
 
   const autoPaymentState = useMemo(() => {
-    const keys = new Set(template.fields.map((field) => field.key));
+    const keys = new Set(activeFields.map((field) => field.key));
     if (!keys.has(PREPAYMENT_FIELD_KEY) && !keys.has(FINAL_PAYMENT_FIELD_KEY)) {
       return { values: {}, hasBase: false };
     }
     const systemValues = calculateSystemPaymentValues(
       template.content,
       tableAdjustments,
-      template.fields,
+      activeFields,
       values,
     );
     if (!systemValues[PREPAYMENT_FIELD_KEY]) return { values: {}, hasBase: false };
@@ -368,17 +373,17 @@ export function ContractComposer({
       next[FINAL_PAYMENT_FIELD_KEY] = systemValues[FINAL_PAYMENT_FIELD_KEY];
     }
     return { values: next, hasBase: true };
-  }, [template.content, template.fields, tableAdjustments, values]);
+  }, [template.content, activeFields, tableAdjustments, values]);
 
   const uppercaseSources = useMemo(() => {
     const sources: Record<string, string> = {};
-    for (const field of template.fields) {
+    for (const field of activeFields) {
       if (field.key === TOTAL_AMOUNT_UPPER_FIELD_KEY) continue;
-      const baseKey = uppercaseFieldBaseKey(template.fields, field.key);
+      const baseKey = uppercaseFieldBaseKey(activeFields, field.key);
       if (baseKey && baseKey !== field.key) sources[field.key] = baseKey;
     }
     return sources;
-  }, [template.fields]);
+  }, [activeFields]);
 
   const autoUppercaseValues = useMemo(() => {
     const next: Record<string, string> = {};
@@ -399,15 +404,15 @@ export function ContractComposer({
     [values, autoAmountState.values, autoPaymentState.values, autoUppercaseValues],
   );
 
-  const requiredCount = template.fields.filter((field) => field.required).length;
-  const completedRequired = template.fields.filter(
+  const requiredCount = activeFields.filter((field) => field.required).length;
+  const completedRequired = activeFields.filter(
     (field) => field.required && (effectiveValues[field.key] || "").trim(),
   ).length;
   const completion = requiredCount ? Math.round((completedRequired / requiredCount) * 100) : 100;
 
   const missing = useMemo(
-    () => missingRequiredFields(template.fields, effectiveValues),
-    [template.fields, effectiveValues],
+    () => missingRequiredFields(activeFields, effectiveValues),
+    [activeFields, effectiveValues],
   );
 
   const autoKindForField = (key: string): AutoAmountFieldKind | null => {
@@ -547,7 +552,7 @@ export function ContractComposer({
     setValues((current) => {
       const next = { ...current, [field.key]: entityName };
       if (party) {
-        for (const other of template.fields) {
+        for (const other of activeFields) {
           const otherRole = resolveAutoFill(other);
           if (
             !otherRole ||
@@ -566,7 +571,7 @@ export function ContractComposer({
     setErrors((current) => {
       const next = new Set(current);
       next.delete(field.key);
-      for (const other of template.fields) {
+      for (const other of activeFields) {
         const otherRole = resolveAutoFill(other);
         if (otherRole && isPartyAutoFillRole(otherRole) && roleSide(otherRole) === side) {
           next.delete(other.key);
@@ -587,7 +592,7 @@ export function ContractComposer({
         [field.key]: warehouse ? warehouse.warehouse_address : shortName,
       };
       if (warehouse) {
-        for (const other of template.fields) {
+        for (const other of activeFields) {
           if (resolveAutoFill(other) !== "warehouse_address") continue;
           next[other.key] = warehouse.warehouse_address;
         }
@@ -597,7 +602,7 @@ export function ContractComposer({
     setErrors((current) => {
       const next = new Set(current);
       next.delete(field.key);
-      for (const other of template.fields) {
+      for (const other of activeFields) {
         if (resolveAutoFill(other) === "warehouse_address") next.delete(other.key);
       }
       return next;
@@ -627,9 +632,9 @@ export function ContractComposer({
   const validate = (forSubmit: boolean) => {
     const next = new Set<string>();
     if (!title.trim()) next.add("__title__");
-    const invalidFields = invalidFieldValues(template.fields, effectiveValues);
+    const invalidFields = invalidFieldValues(activeFields, effectiveValues);
     invalidFields.forEach((item) => next.add(item.field.key));
-    const missingFields = forSubmit ? missingRequiredFields(template.fields, effectiveValues) : [];
+    const missingFields = forSubmit ? missingRequiredFields(activeFields, effectiveValues) : [];
     missingFields.forEach((field) => next.add(field.key));
     setErrors(next);
     if (next.size) {
@@ -766,7 +771,7 @@ export function ContractComposer({
               <div className="field-help">该名称会显示在合同列表、审核工作台和 PDF 文件标题中。</div>
             </div>
 
-            <div className="form-divider"><span>模板空白项</span><small>{template.fields.length} 个字段</small></div>
+            <div className="form-divider"><span>模板空白项</span><small>{activeFields.length} 个字段</small></div>
 
             {hasPartyFields && partyError && (
               <Alert
@@ -787,9 +792,9 @@ export function ContractComposer({
               />
             )}
 
-            {template.fields.length ? (
+            {activeFields.length ? (
               <div className="dynamic-fields">
-                {template.fields.map((field, index) => (
+                {activeFields.map((field, index) => (
                   <FieldControl
                     key={field.key}
                     field={field}
@@ -996,7 +1001,7 @@ export function ContractComposer({
               title={title.trim() || "未命名合同"}
               content={template.content}
               values={effectiveValues}
-              fields={template.fields}
+              fields={activeFields}
               tableAdjustments={tableAdjustments}
               contractNo={contractNo}
               hideContractNumber={hideContractNumber}

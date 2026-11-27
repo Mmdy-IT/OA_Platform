@@ -208,6 +208,51 @@ def test_contract_creation_requires_party_number(client, login_as, monkeypatch):
     assert "主体编号" in response.json()["detail"]
 
 
+def test_unused_template_fields_do_not_block_contract_submission(client, login_as):
+    login_as(client, "legal", "Legal@123")
+    template = client.post(
+        "/api/templates",
+        json={
+            "name": "未使用字段测试模板",
+            "category": "测试类",
+            "description": "",
+            "instructions": "",
+            "content": "<p>{{甲方}}</p>",
+            "fields": [
+                {
+                    "key": "甲方",
+                    "label": "甲方名称",
+                    "type": "text",
+                    "required": True,
+                    "auto_fill": "party_a_name",
+                },
+                {
+                    "key": "未使用字段",
+                    "label": "未使用字段",
+                    "type": "text",
+                    "required": True,
+                },
+            ],
+        },
+    )
+    assert template.status_code == 201, template.text
+
+    login_as(client, "business", "Business@123")
+    created = client.post(
+        "/api/contracts",
+        json={
+            "template_id": template.json()["id"],
+            "title": "未使用字段合同",
+            "field_values": {"甲方": "测试甲方"},
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert [field["key"] for field in created.json()["fields_schema"]] == ["甲方"]
+
+    submitted = client.post(f"/api/contracts/{created.json()['id']}/submit")
+    assert submitted.status_code == 200, submitted.text
+
+
 def test_contract_record_syncs_through_status_transitions(client, login_as, monkeypatch):
     archived: list[dict] = []
     monkeypatch.setattr(
