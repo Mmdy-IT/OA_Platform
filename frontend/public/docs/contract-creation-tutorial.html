@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>新建合同操作教程 · 绵绵聚道</title>
+  <style>
+    :root {
+      --ink: #24301d;
+      --muted: #687560;
+      --line: #dfe5d2;
+      --green: #5a6a46;
+      --green-soft: #f0f4e9;
+      --amber-soft: #fff7e8;
+      --canvas: #f7f6f1;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 88% 0%, rgba(114, 140, 83, .12), transparent 28%),
+        var(--canvas);
+      font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+      line-height: 1.8;
+    }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      padding: 13px 28px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      border-bottom: 1px solid rgba(223, 229, 210, .92);
+      background: rgba(255, 255, 255, .92);
+      backdrop-filter: blur(14px);
+    }
+    .topbar-title { color: var(--green); font-weight: 700; letter-spacing: .04em; }
+    .topbar-actions { display: flex; gap: 10px; }
+    .topbar a {
+      padding: 7px 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--green);
+      background: #fff;
+      font-size: 13px;
+      text-decoration: none;
+    }
+    .topbar a:hover { border-color: #b8c7a3; background: var(--green-soft); }
+    main {
+      width: min(1040px, calc(100% - 48px));
+      margin: 28px auto 60px;
+      padding: 42px 54px 52px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: #fff;
+      box-shadow: 0 24px 70px rgba(43, 57, 33, .08);
+    }
+    h1 { margin: 0 0 12px; font-size: 34px; letter-spacing: -.03em; }
+    h2 {
+      margin: 46px 0 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--line);
+      font-size: 24px;
+    }
+    h3 { margin: 28px 0 10px; font-size: 18px; }
+    p, li { font-size: 15px; }
+    ul, ol { padding-left: 24px; }
+    blockquote {
+      margin: 20px 0;
+      padding: 15px 18px;
+      border-left: 4px solid #c47b0a;
+      border-radius: 0 10px 10px 0;
+      background: var(--amber-soft);
+    }
+    blockquote p { margin: 0; }
+    img {
+      display: block;
+      width: 100%;
+      margin: 18px auto 8px;
+      border: 1px solid #dce2d2;
+      border-radius: 12px;
+      box-shadow: 0 12px 32px rgba(36, 48, 29, .10);
+    }
+    table {
+      width: 100%;
+      margin: 18px 0;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td { padding: 10px 12px; border: 1px solid var(--line); text-align: left; }
+    th { background: #f4f6ef; color: #566247; }
+    code {
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: #4b6037;
+      background: #f0f4e9;
+    }
+    hr { margin: 38px 0; border: 0; border-top: 1px solid var(--line); }
+    .footer-note { margin-top: 18px; color: var(--muted); font-size: 13px; }
+    @media (max-width: 720px) {
+      main { width: calc(100% - 24px); padding: 28px 18px 36px; }
+      .topbar { padding: 10px 14px; }
+      .topbar-title { font-size: 13px; }
+      h1 { font-size: 27px; }
+    }
+    @media print {
+      .topbar { display: none; }
+      body { background: #fff; }
+      main { width: 100%; margin: 0; padding: 0; border: 0; box-shadow: none; }
+      img { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="topbar-title">绵绵聚道 · 业务人员操作指南</span>
+    <div class="topbar-actions">
+      <a href="/contracts">返回合同列表</a>
+      <a href="contract-creation-tutorial.md">查看 Markdown 源文件</a>
+    </div>
+  </div>
+  <main>
+    <h1 id="_1">绵绵聚道 · 新建合同操作教程</h1>
+<blockquote>
+<p>适用对象：业务人员<br>
+适用场景：使用法务维护的标准合同模板起草合同、保存草稿、提交审核并跟踪结果</p>
+</blockquote>
+<h2 id="_2">一、流程总览</h2>
+<p>新建合同的完整流程如下：</p>
+<ol>
+<li>进入「合同管理 → 合同列表」；</li>
+<li>点击「新建合同」；</li>
+<li>选择合同模板；</li>
+<li>填写合同名称和正文要求的空白项；</li>
+<li>在右侧检查合同预览；</li>
+<li>保存草稿，或直接提交法务审核；</li>
+<li>在合同详情和列表中跟踪审核状态；</li>
+<li>审核通过后下载正式 PDF。</li>
+</ol>
+<blockquote>
+<p><strong>重点提示</strong><br>
+合同列表只展示本人发起的合同。每页显示 10 条，可使用上方状态标签筛选草稿、待审核、已通过和已驳回合同。</p>
+</blockquote>
+<h2 id="_3">二、进入合同列表</h2>
+<p>从左侧菜单进入「合同管理 → 合同列表」。</p>
+<p>页面右上角有两个按钮：</p>
+<ul>
+<li><strong>阅读教程</strong>：随时打开本教程；</li>
+<li><strong>新建合同</strong>：开始起草合同。</li>
+</ul>
+<p><img alt="合同列表" src="images/01-contract-list.png"></p>
+<blockquote>
+<p><strong>重点：</strong> 如果找不到某个合同，先确认是否由本人发起，或在顶部切换对应状态筛选。</p>
+</blockquote>
+<h2 id="_4">三、选择合同模板</h2>
+<p>点击「新建合同」后，进入模板选择页。</p>
+<ol>
+<li>可先按合同分类筛选；</li>
+<li>阅读模板说明、版本号和填写项数量；</li>
+<li>找到适用模板后，点击卡片或「使用此模板」。</li>
+</ol>
+<p><img alt="选择合同模板" src="images/02-template-list.png"></p>
+<blockquote>
+<p><strong>注意：</strong> 分类为「通用类」的模板不会出现在普通新建合同列表中，它们只在合同包规则中作为配套合同使用。</p>
+</blockquote>
+<h2 id="_5">四、填写合同内容</h2>
+<p>进入起草页后，左侧填写合同信息，右侧会实时生成合同预览。</p>
+<h3 id="1">1. 合同名称</h3>
+<ul>
+<li>默认使用模板名称；</li>
+<li>建议改为能快速识别业务的名称，例如“2026 年办公电脑采购合同”；</li>
+<li>该名称会显示在合同列表、审核工作台和 PDF 标题中。</li>
+</ul>
+<h3 id="2">2. 合同空白项</h3>
+<p>只会显示模板正文中实际引用到的空白项。</p>
+<ul>
+<li>带红色 <code>*</code> 的是必填项；</li>
+<li>每项下方会显示法务配置的填写要求；</li>
+<li>未在正文中使用的字段不会要求填写。</li>
+</ul>
+<p><img alt="填写合同" src="images/03-contract-form.png"></p>
+<h3 id="3">3. 甲乙方主体</h3>
+<p>选择甲方或乙方主体名称后，系统会自动带出：</p>
+<ul>
+<li>统一社会信用代码；</li>
+<li>户名、开户行、行号、税号；</li>
+<li>联系地址。</li>
+</ul>
+<p>联系人和联系方式需要手动填写。</p>
+<blockquote>
+<p><strong>重点：</strong> 合同编号在保存时生成，前缀来自甲方主体的“主体编号”。如果甲方主体没有维护主体编号，系统会提示先联系管理员或法务补充。</p>
+</blockquote>
+<h3 id="4">4. 日期、数字、金额和下拉选项</h3>
+<ul>
+<li>日期只能通过日期选择器选择；</li>
+<li>数字字段只能输入数字；</li>
+<li>金额字段最多两位小数；</li>
+<li>下拉字段只能选择模板中已配置的选项。</li>
+</ul>
+<h3 id="5">5. 表格行</h3>
+<p>如果模板包含表格：</p>
+<ul>
+<li>模板原有行、合计行、备注行不可删除；</li>
+<li>点击「添加一行」可以新增正文行；</li>
+<li>拖动左侧行号可以调整新增行顺序；</li>
+<li>有「序号」列时，序号自动生成；</li>
+<li>有「数量」「单价」「总额（元）」列时，行总额自动计算；</li>
+<li>总金额和总金额（大写）会自动汇总，不需要手动填写。</li>
+</ul>
+<h3 id="6">6. 实时预览</h3>
+<p>右侧预览会同步显示填写结果。提交前请重点检查：</p>
+<ul>
+<li>甲乙方名称是否完整、准确；</li>
+<li>合同金额大小写是否一致；</li>
+<li>交付日期、付款条件、验收标准是否清晰；</li>
+<li>表格中的数量、单价和合计是否正确。</li>
+</ul>
+<h2 id="_6">五、保存草稿或提交审核</h2>
+<p>页面底部提供：</p>
+<ul>
+<li><strong>保存草稿</strong>：仅保存当前内容，不进入审核；</li>
+<li><strong>提交法务审核</strong>：检查完成后提交给法务。</li>
+</ul>
+<p><img alt="保存或提交" src="images/04-save-submit.png"></p>
+<h3 id="_7">合同包特别说明</h3>
+<p>如果所选模板绑定了「通用类」配套合同：</p>
+<ol>
+<li>首次保存主合同时，系统会保存主合同；</li>
+<li>如果同主体编号的通用合同尚未创建，系统会提示：</li>
+</ol>
+<blockquote>
+<p>该合同属于合同包，请先填写并保存通用合同模板，再保存或提交主合同。</p>
+</blockquote>
+<ol start="3">
+<li>系统会自动创建同编码的通用合同，并跳转到通用合同编辑页；</li>
+<li>请先填写并保存通用合同，再返回主合同提交审核；</li>
+<li>合同包内任一文件被删除时，会同时删除主合同和配套通用合同。</li>
+</ol>
+<blockquote>
+<p><strong>重点：</strong> 合同包内所有合同都填写完整后才能提交审核；全部合同审核通过后才能下载 PDF。</p>
+</blockquote>
+<h2 id="_8">六、跟踪审核状态</h2>
+<p>保存或提交后，可在合同列表和合同详情中查看状态。</p>
+<p><img alt="合同详情" src="images/05-contract-detail.png"></p>
+<table>
+<thead>
+<tr>
+<th>状态</th>
+<th>含义</th>
+<th>可执行操作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>草稿</td>
+<td>尚未提交审核</td>
+<td>继续修改、提交审核</td>
+</tr>
+<tr>
+<td>待审核</td>
+<td>法务正在审核</td>
+<td>查看内容、撤回审核</td>
+</tr>
+<tr>
+<td>已驳回</td>
+<td>法务退回修改</td>
+<td>查看驳回意见、修改后重新提交</td>
+</tr>
+<tr>
+<td>已通过</td>
+<td>法务审核通过</td>
+<td>下载正式 PDF</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_9">被驳回后怎么处理</h3>
+<ol>
+<li>打开合同详情，阅读法务驳回意见；</li>
+<li>点击「修改」；</li>
+<li>按意见调整对应空白项；</li>
+<li>保存草稿或重新提交审核。</li>
+</ol>
+<h3 id="_10">审核通过后下载</h3>
+<p>合同状态为「已通过」时，详情页会出现「下载 PDF」按钮。</p>
+<p>如果合同属于合同包，需要包内全部合同均为「已通过」后才能下载。</p>
+<h2 id="_11">七、常见问题</h2>
+<h3 id="1_1">1. 看不到“新建合同”按钮</h3>
+<p>请确认账号已开通「合同列表」权限。如未开通，可进入「系统管理 → 权限申请」提交申请。</p>
+<h3 id="2_1">2. 看不到需要的模板</h3>
+<ul>
+<li>检查模板是否已归档；</li>
+<li>检查分类筛选；</li>
+<li>「通用类」模板不会作为普通合同模板显示；</li>
+<li>如仍缺失，请联系法务确认模板状态。</li>
+</ul>
+<h3 id="3_1">3. 为什么有些空白项没有显示</h3>
+<p>系统只显示模板正文中实际使用到的空白项。未在正文中引用的字段不会要求填写。</p>
+<h3 id="4_1">4. 为什么无法提交审核</h3>
+<p>常见原因：</p>
+<ul>
+<li>必填项未填写；</li>
+<li>合同包内其他合同仍有空白项；</li>
+<li>合同包内通用合同尚未创建或未填写完整；</li>
+<li>当前不是草稿或已驳回状态。</li>
+</ul>
+<h3 id="5-pdf">5. 为什么不能下载 PDF</h3>
+<p>只有审核通过的合同才能下载 PDF；合同包需要全部合同审核通过。</p>
+<hr>
+<p>如遇到页面异常或权限问题，请将合同编号、操作时间和页面提示截图反馈给系统管理员。</p>
+    <p class="footer-note">提示：教程截图仅用于操作演示，实际页面以系统当前版本为准。</p>
+  </main>
+</body>
+</html>

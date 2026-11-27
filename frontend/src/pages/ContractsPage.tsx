@@ -4,6 +4,7 @@ import {
   DeleteOutlined,
   FileTextOutlined,
   PlusOutlined,
+  ReadOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 import { Button, Input, Modal, Table, Tag, message } from "antd";
@@ -224,9 +225,20 @@ export function ContractsPage() {
         title="我的合同"
         description="仅查看和管理由你本人发起的合同，完成填写、提交审核，并下载已通过的正式 PDF。"
         actions={
-          <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => navigate("/contracts/new")}>
-            新建合同
-          </Button>
+          <>
+            <Button
+              size="large"
+              icon={<ReadOutlined />}
+              onClick={() =>
+                window.open("/docs/contract-creation-tutorial.html", "_blank", "noopener,noreferrer")
+              }
+            >
+              阅读教程
+            </Button>
+            <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => navigate("/contracts/new")}>
+              新建合同
+            </Button>
+          </>
         }
       />
 
