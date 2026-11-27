@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from backend import db
-
-
 def create_general_template(client, login_as) -> dict:
     login_as(client, "legal", "Legal@123")
     response = client.post(
@@ -21,7 +18,7 @@ def create_general_template(client, login_as) -> dict:
     return response.json()
 
 
-def test_bundle_rule_and_automatic_companion_contract(client, login_as):
+def test_bundle_creation_defers_general_companion_until_saved(client, login_as):
     login_as(client, "legal", "Legal@123")
     templates = client.get("/api/templates?status=active").json()["items"]
     trigger = next(item for item in templates if item["category"] != "通用类")
@@ -60,6 +57,12 @@ def test_bundle_rule_and_automatic_companion_contract(client, login_as):
     contract = created.json()
     assert contract["bundle_id"]
     assert contract["bundle"]["bundle_no"].startswith("BND")
+    assert len(contract["bundle"]["members"]) == 1
+
+    ensured = client.post(f"/api/contracts/{contract['id']}/bundle-companions")
+    assert ensured.status_code == 200, ensured.text
+    assert ensured.json()["next_contract_id"]
+    contract = ensured.json()["contract"]
     assert len(contract["bundle"]["members"]) == 2
     assert contract["bundle"]["all_approved"] is False
     companion_id = contract["bundle"]["members"][1]["id"]
@@ -98,9 +101,11 @@ def test_bundle_submit_requires_all_members_complete(client, login_as):
     )
     assert created.status_code == 201
     contract_id = created.json()["id"]
+    ensure_response = client.post(f"/api/contracts/{contract_id}/bundle-companions")
+    assert ensure_response.status_code == 200, ensure_response.text
     submitted = client.post(f"/api/contracts/{contract_id}/submit")
     assert submitted.status_code == 422
-    assert "合同包" in submitted.json()["detail"]["message"]
+    assert "空白项" in submitted.json()["detail"]["message"]
 
 
 def test_general_template_cannot_be_used_as_standalone_contract(client, login_as):
@@ -148,6 +153,9 @@ def test_deleting_one_bundle_member_deletes_the_whole_package(client, login_as):
     )
     assert created.status_code == 201, created.text
     contract = created.json()
+    ensured = client.post(f"/api/contracts/{contract['id']}/bundle-companions")
+    assert ensured.status_code == 200, ensured.text
+    contract = ensured.json()["contract"]
     companion_id = contract["bundle"]["members"][1]["id"]
 
     deleted = client.delete(f"/api/contracts/{companion_id}")
@@ -158,7 +166,7 @@ def test_deleting_one_bundle_member_deletes_the_whole_package(client, login_as):
     assert client.get(f"/api/contracts/{companion_id}").status_code == 404
 
 
-def test_main_contract_save_requires_general_companion(client, login_as):
+def test_main_contract_submit_requires_general_companion(client, login_as):
     login_as(client, "legal", "Legal@123")
     templates = client.get("/api/templates?status=active").json()["items"]
     trigger = next(item for item in templates if item["category"] != "通用类")
@@ -186,14 +194,8 @@ def test_main_contract_save_requires_general_companion(client, login_as):
     )
     assert created.status_code == 201, created.text
     contract = created.json()
-    companion_id = contract["bundle"]["members"][1]["id"]
-    with db.db_cursor(commit=True) as conn:
-        conn.execute("DELETE FROM contracts WHERE id = ?", (companion_id,))
 
-    response = client.put(
-        f"/api/contracts/{contract['id']}",
-        json={"title": "通用合同存在性校验合同", "field_values": {}},
-    )
+    response = client.post(f"/api/contracts/{contract['id']}/submit")
 
     assert response.status_code == 422
     assert "通用合同模板" in response.json()["detail"]

@@ -143,8 +143,27 @@ export function ContractDetailPage() {
       content: "提交后合同内容将被锁定，审核期间不可修改。",
       okText: "确认提交",
       cancelText: "取消",
-      onOk: () =>
-        runAction("submit", () => api.submitContract(contract.id), "合同已提交法务审核"),
+      onOk: async () => {
+        try {
+          const ensured = await api.ensureBundleCompanions(contract.id);
+          if (ensured.next_contract_id) {
+            const nextId = ensured.next_contract_id;
+            message.warning("主合同已保存，请先填写通用合同模板");
+            Modal.info({
+              title: "请先填写通用合同模板",
+              content:
+                "该合同属于合同包，请先填写并保存通用合同模板，再保存或提交主合同。",
+              okText: "去填写通用合同",
+              onOk: () => navigate(`/contracts/${nextId}/edit`),
+            });
+            return;
+          }
+        } catch (caught) {
+          message.error(caught instanceof ApiError ? caught.message : "操作失败，请稍后重试");
+          return;
+        }
+        await runAction("submit", () => api.submitContract(contract.id), "合同已提交法务审核");
+      },
     });
   };
 

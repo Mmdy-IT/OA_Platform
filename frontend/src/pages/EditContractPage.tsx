@@ -1,4 +1,4 @@
-import { Alert, Button, Result, Skeleton, message } from "antd";
+import { Alert, Button, Modal, Result, Skeleton, message } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api";
@@ -93,6 +93,18 @@ export function EditContractPage() {
         table_adjustments: tableAdjustments,
       });
       message.success("合同内容已保存");
+      const ensured = await api.ensureBundleCompanions(contract.id);
+      if (ensured.next_contract_id) {
+        const nextId = ensured.next_contract_id;
+        Modal.info({
+          title: "请先填写通用合同模板",
+          content:
+            "该合同属于合同包，请先填写并保存通用合同模板，再保存或提交主合同。",
+          okText: "去填写通用合同",
+          onOk: () => navigate(`/contracts/${nextId}/edit`),
+        });
+        return;
+      }
       navigate(`/contracts/${contract.id}`);
     } catch (caught) {
       message.error(caught instanceof ApiError ? caught.message : "保存失败，请稍后重试");
@@ -110,6 +122,19 @@ export function EditContractPage() {
         field_values: values,
         table_adjustments: tableAdjustments,
       });
+      const ensured = await api.ensureBundleCompanions(contract.id);
+      if (ensured.next_contract_id) {
+        const nextId = ensured.next_contract_id;
+        message.warning("主合同已保存，请先填写通用合同模板");
+        Modal.info({
+          title: "请先填写通用合同模板",
+          content:
+            "该合同属于合同包，请先填写并保存通用合同模板，再保存或提交主合同。",
+          okText: "去填写通用合同",
+          onOk: () => navigate(`/contracts/${nextId}/edit`),
+        });
+        return;
+      }
       await api.submitContract(contract.id);
       message.success("合同已重新提交法务审核");
       navigate(`/contracts/${contract.id}`);

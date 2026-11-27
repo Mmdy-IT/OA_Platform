@@ -488,12 +488,16 @@ def _submit_bundle(conn, row, user: dict) -> dict:
         values = apply_auto_amounts(member["template_content"], adjustments, fields, values)
         values = _filter_values(values, fields)
         _ensure_valid_field_values(fields, values)
-        missing = _missing_required(fields, values)
+        missing = [
+            str(field.get("label") or field.get("key") or "")
+            for field in fields
+            if not str(values.get(str(field.get("key") or ""), "")).strip()
+        ]
         if missing:
             raise HTTPException(
                 status_code=422,
                 detail={
-                    "message": f"合同包内《{member['title']}》尚未填写完整",
+                    "message": f"合同包内《{member['title']}》仍有空白项未填写：{'、'.join(missing)}",
                     "fields": missing,
                 },
             )
@@ -593,9 +597,13 @@ def _ensure_bundle_companion(conn, row) -> None:
         int(item["required_template_id"])
         for item in conn.execute(
             """
-            SELECT required_template_id
-              FROM contract_bundle_rules
-             WHERE trigger_template_id = ? AND enabled = 1
+            SELECT r.required_template_id
+              FROM contract_bundle_rules r
+              JOIN templates t ON t.id = r.required_template_id
+             WHERE r.trigger_template_id = ?
+               AND r.enabled = 1
+               AND t.status = 'active'
+               AND t.category = '通用类'
             """,
             (row["template_id"],),
         ).fetchall()
@@ -621,6 +629,63 @@ def _ensure_bundle_companion(conn, row) -> None:
         status_code=422,
         detail="该合同属于合同包，请先填写并保存通用合同模板，再保存或提交主合同。",
     )
+
+
+def _create_missing_bundle_companions(conn, row, user: dict) -> list[int]:
+    if not row["bundle_id"] or row["template_category"] == "通用类":
+        return []
+    required_rows = conn.execute(
+        """
+        SELECT t.*
+          FROM contract_bundle_rules r
+          JOIN templates t ON t.id = r.required_template_id
+         WHERE r.trigger_template_id = ?
+           AND r.enabled = 1
+           AND t.status = 'active'
+           AND t.category = '通用类'
+         ORDER BY r.id ASC
+        """,
+        (row["template_id"],),
+    ).fetchall()
+    existing = {
+        int(item["template_id"])
+        for item in conn.execute(
+            """
+            SELECT template_id
+              FROM contracts
+             WHERE bundle_id = ?
+               AND contract_code = ?
+               AND template_category = '通用类'
+            """,
+            (row["bundle_id"], row["contract_code"]),
+        ).fetchall()
+    }
+    field_values = _load_json(row["field_values_json"], {})
+    created: list[int] = []
+    for template in required_rows:
+        template_id = int(template["id"])
+        if template_id in existing:
+            continue
+        title = f"{row['title']}·{template['name']}"[:200]
+        created.append(
+            _insert_contract_record(
+                conn,
+                template,
+                title=title,
+                field_values=field_values,
+                table_adjustments={},
+                user=user,
+                bundle_id=row["bundle_id"],
+                contract_code_override=row["contract_code"],
+            )
+        )
+        existing.add(template_id)
+    if created:
+        conn.execute(
+            "UPDATE contract_bundles SET updated_at = ? WHERE id = ?",
+            (utcnow(), row["bundle_id"]),
+        )
+    return created
 
 
 def _contract_detail(conn, row) -> dict:
@@ -1581,41 +1646,28 @@ def create_contract_bundle(
             bundle_id=bundle_id,
         )
 
-        if bundle_id is not None:
-            primary_code_row = conn.execute(
-                "SELECT contract_code FROM contracts WHERE id = ?", (primary_id,)
-            ).fetchone()
-            primary_contract_code = (
-                str(primary_code_row["contract_code"])
-                if primary_code_row and primary_code_row["contract_code"]
-                else DEFAULT_CONTRACT_CODE
-            )
-            for required in required_templates:
-                required_row = conn.execute(
-                    "SELECT * FROM templates WHERE id = ? AND status = 'active'",
-                    (required["id"],),
-                ).fetchone()
-                if not required_row:
-                    continue
-                companion_title = (
-                    f"{payload.title.strip()}·{required_row['name']}"
-                )[:200]
-                _insert_contract_record(
-                    conn,
-                    required_row,
-                    title=companion_title,
-                    field_values=payload.field_values,
-                    table_adjustments={},
-                    user=user,
-                    bundle_id=bundle_id,
-                    contract_code_override=primary_contract_code,
-                )
-            conn.execute(
-                "UPDATE contract_bundles SET updated_at = ? WHERE id = ?",
-                (utcnow(), bundle_id),
-            )
-
         return _fetch_contract(conn, primary_id, user)
+
+
+@app.post("/api/contracts/{contract_id}/bundle-companions")
+def ensure_bundle_companions(
+    contract_id: int,
+    user: dict = Depends(require_permission("contracts")),
+):
+    with db_cursor(commit=True) as conn:
+        row = conn.execute("SELECT * FROM contracts WHERE id = ?", (contract_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="合同不存在")
+        if row["creator_id"] != user["id"] and user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="无权修改该合同")
+        if row["status"] not in {"draft", "rejected"}:
+            raise HTTPException(status_code=409, detail="仅草稿或已驳回的合同可以补建通用合同")
+        created_ids = _create_missing_bundle_companions(conn, row, user)
+        return {
+            "created_contract_ids": created_ids,
+            "next_contract_id": created_ids[0] if created_ids else None,
+            "contract": _fetch_contract(conn, contract_id, user),
+        }
 
 
 @app.put("/api/contracts/{contract_id}")
@@ -1632,8 +1684,6 @@ def update_contract(
             raise HTTPException(status_code=403, detail="无权修改该合同")
         if row["status"] not in {"draft", "rejected"}:
             raise HTTPException(status_code=409, detail="仅草稿或已驳回的合同可以修改")
-        _ensure_bundle_companion(conn, row)
-
         title = payload.title.strip() if payload.title is not None else row["title"]
         if not title:
             raise HTTPException(status_code=422, detail="合同名称不能为空")

@@ -6,7 +6,7 @@ import {
   SearchOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, Empty, Input, Skeleton, Tag, message } from "antd";
+import { Alert, Button, Empty, Input, Modal, Skeleton, Tag, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../api";
@@ -150,7 +150,19 @@ export function NewContractPage() {
   ) => {
     try {
       const id = await ensureDraft(title, values, tableAdjustments);
+      const ensured = await api.ensureBundleCompanions(id);
       message.success("合同草稿已保存");
+      if (ensured.next_contract_id) {
+        const nextId = ensured.next_contract_id;
+        Modal.info({
+          title: "请先填写通用合同模板",
+          content:
+            "该合同属于合同包，请先填写并保存通用合同模板，再保存或提交主合同。",
+          okText: "去填写通用合同",
+          onOk: () => navigate(`/contracts/${nextId}/edit`),
+        });
+        return;
+      }
       navigate(`/contracts/${id}`);
     } catch (caught) {
       message.error(caught instanceof ApiError ? caught.message : "保存失败，请稍后重试");
@@ -164,6 +176,19 @@ export function NewContractPage() {
   ) => {
     try {
       const id = await ensureDraft(title, values, tableAdjustments);
+      const ensured = await api.ensureBundleCompanions(id);
+      if (ensured.next_contract_id) {
+        const nextId = ensured.next_contract_id;
+        message.warning("主合同已保存，请先填写通用合同模板");
+        Modal.info({
+          title: "请先填写通用合同模板",
+          content:
+            "该合同属于合同包，请先填写并保存通用合同模板，再保存或提交主合同。",
+          okText: "去填写通用合同",
+          onOk: () => navigate(`/contracts/${nextId}/edit`),
+        });
+        return;
+      }
       await api.submitContract(id);
       message.success("合同已提交法务审核");
       navigate(`/contracts/${id}`);
@@ -188,9 +213,9 @@ export function NewContractPage() {
             type="warning"
             showIcon
             message="该模板需要同时签署配套合同"
-            description={`系统将自动生成配套合同草稿：${bundleRequirements
+            description={`主合同首次保存后会生成配套合同草稿：${bundleRequirements
               .map((item) => item.name)
-              .join("、")}。所有合同填写并审核通过后才可下载 PDF。`}
+              .join("、")}。请先填写并保存通用合同模板，再保存或提交主合同；全部合同审核通过后才可下载 PDF。`}
           />
         )}
         <ContractComposer

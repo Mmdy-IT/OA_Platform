@@ -160,6 +160,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  ensureBundleCompanions: (id: number | string) =>
+    request<{
+      created_contract_ids: number[];
+      next_contract_id: number | null;
+      contract: Contract;
+    }>(`/contracts/${id}/bundle-companions`, { method: "POST" }),
   bundleRequirements: (templateId: number) =>
     request<{ items: BundleRequirement[] }>(
       `/bundle-requirements?template_id=${templateId}`,
