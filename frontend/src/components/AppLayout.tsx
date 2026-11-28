@@ -112,13 +112,6 @@ export function AppLayout() {
     }
 
     const contractChildren: NonNullable<MenuProps["items"]> = [];
-    if (granted.has("contracts") || granted.has("reviews")) {
-      contractChildren.push({
-        key: "/contract-overview",
-        icon: <FileProtectOutlined />,
-        label: "合同概览",
-      });
-    }
     if (granted.has("contracts")) {
       contractChildren.push({
         key: "/contracts",
@@ -161,9 +154,9 @@ export function AppLayout() {
     }
     if (contractChildren.length) {
       items.push({
-        key: "contract-management",
+        key: "/contract-overview",
         icon: <FileTextOutlined />,
-        label: "合同管理",
+        label: <Link to="/contract-overview">合同管理</Link>,
         children: contractChildren,
       });
     }
@@ -269,7 +262,7 @@ export function AppLayout() {
             theme="light"
             mode="inline"
             selectedKeys={[selectedKey]}
-            defaultOpenKeys={["contract-management", "system-management"]}
+            defaultOpenKeys={["/contract-overview", "system-management"]}
             items={menuItems}
             className="app-menu"
             onClick={({ key }) => {

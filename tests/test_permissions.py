@@ -248,6 +248,60 @@ def test_permission_role_change_is_not_hidden_by_default_cache(monkeypatch):
     assert user_permissions.resolve_access_profile(user)["role"] == "admin"
 
 
+def test_review_permission_is_only_effective_for_legal_role(monkeypatch):
+    assert "reviews" not in user_permissions.permission_defaults("admin")
+    assert "reviews" not in user_permissions.permission_defaults("business")
+    assert "reviews" in user_permissions.permission_defaults("legal")
+    assert user_permissions._load_permissions_json(
+        '["dashboard", "reviews"]', "business"
+    ) == ("dashboard",)
+
+    monkeypatch.setattr(user_permissions, "_TABLE_READY", True)
+    monkeypatch.setattr(
+        user_permissions,
+        "_connect",
+        lambda: _FakeConnection(
+            {
+                "role": "admin",
+                "department": "信息技术部",
+                "job_title": "",
+                "permissions_json": '["dashboard", "reviews", "templates"]',
+            }
+        ),
+    )
+    profile = user_permissions._fetch_access_profile_for_user(
+        {"id": 1, "username": "admin", "role": "admin"}
+    )
+    assert profile["permissions"] == ["dashboard", "templates"]
+
+
+def test_non_legal_user_cannot_be_granted_or_request_review_permission(monkeypatch):
+    monkeypatch.setattr(user_permissions, "_TABLE_READY", True)
+    monkeypatch.setattr(user_permissions, "_sync_local_users", lambda _cursor: None)
+    monkeypatch.setattr(
+        user_permissions,
+        "_connect",
+        lambda: _FakeConnection(
+            {
+                "id": 7,
+                "role": "admin",
+                "permissions_json": '["dashboard", "contracts"]',
+            }
+        ),
+    )
+
+    with pytest.raises(user_permissions.UserPermissionValidationError):
+        user_permissions.update_user_permission(
+            7, permissions=["dashboard", "contracts", "reviews"]
+        )
+    with pytest.raises(user_permissions.UserPermissionValidationError):
+        user_permissions.create_permission_request(
+            {"id": 8, "role": "business", "permissions": ["dashboard", "contracts"]},
+            permissions=["reviews"],
+            reason="尝试申请审核权限",
+        )
+
+
 def test_business_cannot_access_review_module(client, login_as):
     login_as(client, "business", "Business@123")
     response = client.post(
@@ -464,6 +518,7 @@ def test_permission_request_approval_merges_existing_permissions(monkeypatch):
     }
     target_permission = {
         "id": 7,
+        "role": "legal",
         "permissions_json": '["dashboard", "contracts"]',
     }
     cursor = _FakeReviewCursor([request_row, target_permission, updated_request])
@@ -495,6 +550,63 @@ def test_permission_request_approval_merges_existing_permissions(monkeypatch):
     assert merged == {"dashboard", "contracts", "reviews", "parties"}
     assert result["status"] == "approved"
     assert result["reviewer_name"] == "系统管理员"
+
+
+def test_permission_request_approval_skips_reviews_for_non_legal_target(monkeypatch):
+    request_row = {
+        "id": 13,
+        "oa_user_id": 4,
+        "username": "business",
+        "display_name": "陈晨",
+        "permissions_json": '["reviews", "parties"]',
+        "reason": "需要处理合同审核和主体维护",
+        "status": "pending",
+        "reviewer_id": None,
+        "reviewer_name": "",
+        "review_comment": "",
+        "reviewed_at": None,
+        "created_at": "2026-11-27 09:00:00",
+        "updated_at": "2026-11-27 09:00:00",
+    }
+    updated_request = {
+        **request_row,
+        "status": "approved",
+        "reviewer_id": 1,
+        "reviewer_name": "系统管理员",
+        "review_comment": "同意开通",
+    }
+    target_permission = {
+        "id": 8,
+        "role": "business",
+        "permissions_json": '["dashboard", "contracts"]',
+    }
+    cursor = _FakeReviewCursor([request_row, target_permission, updated_request])
+    monkeypatch.setattr(user_permissions, "_TABLE_READY", True)
+    monkeypatch.setattr(user_permissions, "_REQUEST_TABLE_READY", True)
+    monkeypatch.setattr(
+        user_permissions,
+        "_connect",
+        lambda: _FakeReviewConnection(cursor),
+    )
+
+    user_permissions.review_permission_request(
+        13,
+        {"id": 1, "username": "admin", "display_name": "系统管理员"},
+        decision="approve",
+        comment="同意开通",
+    )
+
+    permission_updates = [
+        params
+        for statement, params in cursor.calls
+        if "UPDATE" in statement
+        and "permissions_json" in statement
+        and params
+        and str(params[0]).startswith("[")
+    ]
+    assert permission_updates
+    merged = set(json.loads(permission_updates[0][0]))
+    assert merged == {"dashboard", "contracts", "parties"}
 
 
 def test_permission_values_are_validated(monkeypatch):

@@ -3,7 +3,14 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import contract_archive, db, party_db, security, user_permissions
+from backend import (
+    contract_archive,
+    db,
+    feishu_notify,
+    party_db,
+    security,
+    user_permissions,
+)
 from backend.app import app
 
 
@@ -14,6 +21,17 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "oa.db")
     monkeypatch.setattr(contract_archive, "sync_contract_record", lambda **_: None)
     monkeypatch.setattr(contract_archive, "delete_contract_record", lambda **_: None)
+    class NoopFeishuClient:
+        def send_card(self, *_, **__):
+            return {"code": 0}
+
+    monkeypatch.setattr(feishu_notify, "get_feishu_client", NoopFeishuClient)
+    monkeypatch.setattr(
+        user_permissions, "list_feishu_recipients", lambda _role: []
+    )
+    monkeypatch.setattr(
+        user_permissions, "feishu_union_id_for_oa_user", lambda _user_id: ""
+    )
     def fake_list_parties(force_refresh=False, query="", party_type=""):
         if party_type != "甲方":
             return []

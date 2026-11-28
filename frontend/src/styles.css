@@ -723,6 +723,12 @@ code {
   color: #4a563f;
 }
 
+.app-menu .ant-menu-submenu-title a {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
 .app-menu .ant-menu-item:hover,
 .app-menu .ant-menu-submenu-title:hover {
   color: #24301d !important;
@@ -2496,6 +2502,18 @@ button.template-card:hover {
   gap: 15px;
 }
 
+.oa-home-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  align-items: stretch;
+  gap: 15px;
+}
+
+.oa-home-row .oa-todo-panel,
+.oa-home-row .oa-notice-panel {
+  height: 100%;
+}
+
 .oa-quick-panel,
 .oa-profile-panel,
 .oa-todo-panel,
@@ -2679,6 +2697,7 @@ button.template-card:hover {
 @media (max-width: 1180px) {
   .oa-home-grid { grid-template-columns: 1fr 1fr; }
   .oa-todo-panel { grid-column: 1 / -1; }
+  .oa-home-row { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 860px) {
@@ -2687,6 +2706,7 @@ button.template-card:hover {
   .oa-module-grid { grid-template-columns: 1fr 1fr; }
   .oa-home-grid { grid-template-columns: 1fr; }
   .oa-todo-panel { grid-column: auto; }
+  .oa-home-row { grid-template-columns: 1fr; }
   .oa-notice-panel { grid-template-columns: 1fr; }
 }
 

@@ -87,7 +87,7 @@ export function PermissionRequestPage() {
   const granted = useMemo(() => new Set(user?.permissions || []), [user?.permissions]);
 
   const togglePermission = (key: PermissionKey) => {
-    if (granted.has(key)) return;
+    if (granted.has(key) || (key === "reviews" && user?.role !== "legal")) return;
     setSelected((current) =>
       current.includes(key) ? current.filter((item) => item !== key) : [...current, key],
     );
@@ -96,7 +96,10 @@ export function PermissionRequestPage() {
   const toggleGroup = (groupModules: PermissionModule[], checked: boolean) => {
     const available = groupModules
       .map((module) => module.key)
-      .filter((key) => !granted.has(key));
+      .filter(
+        (key) =>
+          !granted.has(key) && (key !== "reviews" || user?.role === "legal"),
+      );
     setSelected((current) => {
       const rest = current.filter((key) => !available.includes(key));
       return checked ? [...rest, ...available] : rest;
@@ -264,7 +267,11 @@ export function PermissionRequestPage() {
             {groups.map((group) => {
             const availableKeys = group.modules
               .map((module) => module.key)
-              .filter((key) => !granted.has(key));
+              .filter(
+                (key) =>
+                  !granted.has(key) &&
+                  (key !== "reviews" || user?.role === "legal"),
+              );
             const selectedCount = availableKeys.filter((key) => selected.includes(key)).length;
             const allSelected = availableKeys.length > 0 && selectedCount === availableKeys.length;
             const partiallySelected = selectedCount > 0 && !allSelected;
@@ -288,21 +295,27 @@ export function PermissionRequestPage() {
                 </div>
                 {group.modules.map((module) => {
                   const alreadyGranted = granted.has(module.key);
+                  const reviewLocked =
+                    module.key === "reviews" && user?.role !== "legal";
                   const checked = selected.includes(module.key);
                   return (
                     <label
                       key={module.key}
-                      className={`permission-option ${checked ? "checked" : ""} ${alreadyGranted ? "disabled" : ""}`}
+                      className={`permission-option ${checked ? "checked" : ""} ${alreadyGranted || reviewLocked ? "disabled" : ""}`}
                     >
                       <Checkbox
                         checked={alreadyGranted || checked}
-                        disabled={alreadyGranted}
+                        disabled={alreadyGranted || reviewLocked}
                         onChange={() => togglePermission(module.key)}
                       />
                       <div>
                         <strong>{module.label}</strong>
                         <span>
-                          {alreadyGranted ? "已开通" : module.description}
+                          {reviewLocked
+                            ? "仅法务角色可申请此权限"
+                            : alreadyGranted
+                              ? "已开通"
+                              : module.description}
                         </span>
                       </div>
                     </label>

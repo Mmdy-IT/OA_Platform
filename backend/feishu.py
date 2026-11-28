@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
 from urllib.parse import urlencode
@@ -110,6 +111,25 @@ class FeishuClient:
                 "department",
             )
         }
+
+    def send_card(
+        self,
+        receive_id: str,
+        card: dict,
+        *,
+        receive_id_type: str = "union_id",
+    ) -> dict:
+        app_token = self.get_app_access_token()
+        return self._request(
+            "POST",
+            f"/im/v1/messages?receive_id_type={receive_id_type}",
+            json={
+                "receive_id": receive_id,
+                "msg_type": "interactive",
+                "content": json.dumps(card, ensure_ascii=False),
+            },
+            headers={"Authorization": f"Bearer {app_token}"},
+        )
 
 
 def get_feishu_client() -> FeishuClient:

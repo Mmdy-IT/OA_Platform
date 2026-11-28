@@ -1,30 +1,24 @@
 import {
   ArrowRightOutlined,
-  AuditOutlined,
   BankOutlined,
   BookOutlined,
   CalendarOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
-  FileAddOutlined,
-  FileProtectOutlined,
   FileTextOutlined,
   IdcardOutlined,
   PlusOutlined,
-  SafetyCertificateOutlined,
   ShopOutlined,
   TeamOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { Button, Skeleton, Tag } from "antd";
 import dayjs from "dayjs";
-import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api";
 import { hasPermission, useAuth } from "../auth";
 import type { DashboardData } from "../types";
-import { initials } from "../utils";
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -120,52 +114,6 @@ export function DashboardPage() {
   const canReview = hasPermission(user, "reviews");
   const pendingCount = contractData?.pending_contracts.length || 0;
   const contractPath = canCreate ? "/contracts" : "/reviews";
-  const quickActions = useMemo(
-    () =>
-      [
-        canUseContracts
-          ? {
-              key: "overview",
-              label: "合同概览",
-              description: "查看合同流转与待办",
-              icon: <FileProtectOutlined />,
-              onClick: () => navigate("/contract-overview"),
-            }
-          : null,
-        canCreate
-          ? {
-              key: "new",
-              label: "发起合同",
-              description: "从标准模板开始起草",
-              icon: <FileAddOutlined />,
-              onClick: () => navigate("/contracts/new"),
-            }
-          : null,
-        canReview
-          ? {
-              key: "review",
-              label: "审核队列",
-              description: "处理待审合同",
-              icon: <AuditOutlined />,
-              onClick: () => navigate("/reviews"),
-            }
-          : null,
-        {
-          key: "permission",
-          label: "权限申请",
-          description: "申请业务模块使用权限",
-          icon: <SafetyCertificateOutlined />,
-          onClick: () => navigate("/permission-requests"),
-        },
-      ].filter(Boolean) as {
-        key: string;
-        label: string;
-        description: string;
-        icon: ReactNode;
-        onClick: () => void;
-      }[],
-    [canCreate, canReview, canUseContracts, navigate],
-  );
 
   return (
     <div className="page-stack oa-home-page">
@@ -244,43 +192,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <section className="oa-home-grid">
-        <div className="panel oa-quick-panel">
-          <div className="panel-head">
-            <div>
-              <span className="panel-eyebrow">QUICK ACCESS</span>
-              <h3>快捷入口</h3>
-            </div>
-          </div>
-          <div className="oa-quick-grid">
-            {quickActions.map((action) => (
-              <button type="button" key={action.key} className="oa-quick-item" onClick={action.onClick}>
-                <span>{action.icon}</span>
-                <div>
-                  <strong>{action.label}</strong>
-                  <small>{action.description}</small>
-                </div>
-                <ArrowRightOutlined />
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="panel oa-profile-panel">
-          <div className="oa-profile-head">
-            <span className="oa-profile-avatar">{initials(user?.display_name)}</span>
-            <div>
-              <strong>{user?.display_name}</strong>
-              <span>{user?.job_title || "岗位未设置"}</span>
-            </div>
-          </div>
-          <div className="oa-profile-list">
-            <div><span>所属部门</span><strong>{user?.department || "未设置"}</strong></div>
-            <div><span>系统账号</span><strong>{user?.username}</strong></div>
-            <div><span>今日日期</span><strong>{dayjs().format("YYYY-MM-DD")}</strong></div>
-          </div>
-        </div>
-
+      <section className="oa-home-row">
         <div className="panel oa-todo-panel">
           <div className="panel-head">
             <div>
@@ -315,17 +227,16 @@ export function DashboardPage() {
             查看全部待办
           </Button>
         </div>
-      </section>
-
-      <section className="panel oa-notice-panel">
-        <div>
-          <span className="panel-eyebrow">PLATFORM NOTICE</span>
-          <h3>平台动态</h3>
-        </div>
-        <div className="oa-notice-list">
-          <div><Tag className="oa-live-tag">已上线</Tag><span>合同管理模块正式运行，支持模板、合同包、法务审核和 PDF 归档。</span></div>
-          <div><Tag className="oa-planned-tag">规划中</Tag><span>人事、财务、采购、行政和知识中心将按业务优先级逐步接入。</span></div>
-          <div><Tag className="oa-planned-tag">统一身份</Tag><span>飞书免登已启用，人员岗位、部门和权限由组织信息统一维护。</span></div>
+        <div className="panel oa-notice-panel">
+          <div>
+            <span className="panel-eyebrow">PLATFORM NOTICE</span>
+            <h3>平台动态</h3>
+          </div>
+          <div className="oa-notice-list">
+            <div><Tag className="oa-live-tag">已上线</Tag><span>合同管理模块正式运行，支持模板、合同包、法务审核和 PDF 归档。</span></div>
+            <div><Tag className="oa-planned-tag">规划中</Tag><span>人事、财务、采购、行政和知识中心将按业务优先级逐步接入。</span></div>
+            <div><Tag className="oa-planned-tag">统一身份</Tag><span>飞书免登已启用，人员岗位、部门和权限由组织信息统一维护。</span></div>
+          </div>
         </div>
       </section>
     </div>

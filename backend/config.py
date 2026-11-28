@@ -4,6 +4,7 @@ import os
 from configparser import ConfigParser
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -87,6 +88,14 @@ def password_login_enabled() -> bool:
 
 
 def get_feishu_settings() -> dict[str, object]:
+    redirect_uri = get_setting("feishu", "redirect_uri", "OA_FEISHU_REDIRECT_URI", "")
+    public_base_url = get_setting(
+        "feishu", "public_base_url", "OA_PUBLIC_BASE_URL", ""
+    ).rstrip("/")
+    if not public_base_url and redirect_uri:
+        parsed = urlsplit(redirect_uri)
+        if parsed.scheme and parsed.netloc:
+            public_base_url = f"{parsed.scheme}://{parsed.netloc}"
     settings = {
         "enabled": _as_bool(
             get_setting("feishu", "enabled", "OA_FEISHU_ENABLED", "false")
@@ -95,9 +104,8 @@ def get_feishu_settings() -> dict[str, object]:
         "app_secret": get_setting(
             "feishu", "app_secret", "OA_FEISHU_APP_SECRET", ""
         ),
-        "redirect_uri": get_setting(
-            "feishu", "redirect_uri", "OA_FEISHU_REDIRECT_URI", ""
-        ),
+        "redirect_uri": redirect_uri,
+        "public_base_url": public_base_url,
         "auto_provision": _as_bool(
             get_setting("feishu", "auto_provision", "OA_FEISHU_AUTO_PROVISION", "true")
         ),

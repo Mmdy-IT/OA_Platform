@@ -78,7 +78,7 @@ MODULE_KEYS = tuple(item["key"] for item in MODULES)
 MODULE_ORDER = {key: index for index, key in enumerate(MODULE_KEYS)}
 
 ROLE_DEFAULT_PERMISSIONS: dict[str, tuple[str, ...]] = {
-    "admin": MODULE_KEYS,
+    "admin": ("dashboard", "contracts", "party_a", "parties", "templates"),
     "legal": ("dashboard", "contracts", "party_a", "parties", "reviews", "templates"),
     "business": ("dashboard", "contracts"),
 }
@@ -243,16 +243,26 @@ def _sync_local_users(cursor) -> None:
         )
 
 
-def _load_permissions_json(raw: Any, role: str = "business") -> tuple[str, ...]:
+def _parse_permission_keys(raw: Any) -> tuple[str, ...] | None:
     if raw is None or str(raw).strip() == "":
-        return permission_defaults(role)
+        return None
     try:
         values = json.loads(str(raw))
     except (json.JSONDecodeError, TypeError):
-        return permission_defaults(role)
+        return None
     if not isinstance(values, list):
-        return permission_defaults(role)
+        return None
     keys = {str(item).strip() for item in values}
+    return tuple(sorted((key for key in keys if key in MODULE_ORDER), key=MODULE_ORDER.get))
+
+
+def _load_permissions_json(raw: Any, role: str = "business") -> tuple[str, ...]:
+    parsed = _parse_permission_keys(raw)
+    if parsed is None:
+        return permission_defaults(role)
+    keys = set(parsed)
+    if role != "legal":
+        keys.discard("reviews")
     return tuple(sorted((key for key in keys if key in MODULE_ORDER), key=MODULE_ORDER.get))
 
 
@@ -556,6 +566,66 @@ def list_user_permissions() -> list[dict]:
     return [_row_to_record(row) for row in rows]
 
 
+def list_feishu_recipients(role: str) -> list[dict]:
+    table = _full_table()
+    connection = None
+    try:
+        connection = _connect()
+        with connection.cursor() as cursor:
+            _ensure_table(cursor)
+            cursor.execute(
+                f"""
+                SELECT `oa_user_id`, `union_id`, `username`, `display_name`
+                  FROM {table}
+                 WHERE `role` = %s
+                   AND `union_id` IS NOT NULL
+                   AND `union_id` <> ''
+                 ORDER BY `id` ASC
+                """,
+                (role,),
+            )
+            rows = cursor.fetchall()
+    except pymysql.MySQLError as exc:
+        raise UserPermissionError("人员权限表连接失败，请稍后重试") from exc
+    finally:
+        if connection is not None:
+            connection.close()
+    return [
+        {
+            "oa_user_id": int(row["oa_user_id"]) if row.get("oa_user_id") is not None else None,
+            "union_id": str(row.get("union_id") or ""),
+            "username": str(row.get("username") or ""),
+            "display_name": str(row.get("display_name") or ""),
+        }
+        for row in rows
+    ]
+
+
+def feishu_union_id_for_oa_user(user_id: int) -> str:
+    table = _full_table()
+    connection = None
+    try:
+        connection = _connect()
+        with connection.cursor() as cursor:
+            _ensure_table(cursor)
+            cursor.execute(
+                f"""
+                SELECT `union_id`
+                  FROM {table}
+                 WHERE `oa_user_id` = %s
+                 LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+    except pymysql.MySQLError as exc:
+        raise UserPermissionError("人员权限表连接失败，请稍后重试") from exc
+    finally:
+        if connection is not None:
+            connection.close()
+    return str(row.get("union_id") or "").strip() if row else ""
+
+
 def update_user_permission(
     record_id: int,
     *,
@@ -573,8 +643,11 @@ def update_user_permission(
         with connection.cursor() as cursor:
             _ensure_table(cursor)
             _sync_local_users(cursor)
-            if not _select_record(cursor, record_id):
+            existing = _select_record(cursor, record_id)
+            if not existing:
                 raise UserPermissionNotFound("人员权限记录不存在")
+            if "reviews" in normalized and str(existing.get("role") or "") != "legal":
+                raise UserPermissionValidationError("仅法务角色可开通审核工作台权限")
             try:
                 cursor.execute(
                     f"""
@@ -631,7 +704,7 @@ def _permission_request_record(row: dict) -> dict:
         "oa_user_id": int(row["oa_user_id"]),
         "username": str(row.get("username") or ""),
         "display_name": str(row.get("display_name") or ""),
-        "permissions": list(_load_permissions_json(row.get("permissions_json"))),
+        "permissions": list(_parse_permission_keys(row.get("permissions_json")) or ()),
         "reason": str(row.get("reason") or ""),
         "status": str(row.get("status") or "pending"),
         "reviewer_id": int(row["reviewer_id"]) if row.get("reviewer_id") is not None else None,
@@ -652,6 +725,8 @@ def create_permission_request(
     normalized = _normalize_permission_keys(permissions)
     if not normalized:
         raise UserPermissionValidationError("请至少选择一个申请开通的权限")
+    if "reviews" in normalized and str(user.get("role") or "") != "legal":
+        raise UserPermissionValidationError("仅法务角色可申请审核工作台权限")
     reason_value = (reason or "").strip()
     if not reason_value:
         raise UserPermissionValidationError("请填写开通事由")
@@ -675,7 +750,9 @@ def create_permission_request(
             )
             pending_keys: set[str] = set()
             for row in cursor.fetchall():
-                pending_keys.update(_load_permissions_json(row.get("permissions_json")))
+                pending_keys.update(
+                    _parse_permission_keys(row.get("permissions_json")) or ()
+                )
             duplicate = pending_keys.intersection(normalized)
             if duplicate:
                 raise UserPermissionConflict("所选权限已有待审批申请，请勿重复提交")
@@ -765,7 +842,7 @@ def review_permission_request(
             if decision == "approve":
                 cursor.execute(
                     f"""
-                    SELECT `id`, `permissions_json`
+                    SELECT `id`, `role`, `permissions_json`
                       FROM {permission_table}
                      WHERE `oa_user_id` = %s OR `username` = %s
                      LIMIT 1
@@ -775,8 +852,16 @@ def review_permission_request(
                 target = cursor.fetchone()
                 if not target:
                     raise UserPermissionNotFound("申请人的权限记录不存在")
-                merged = set(_load_permissions_json(target.get("permissions_json")))
-                merged.update(_load_permissions_json(request_row.get("permissions_json")))
+                target_role = str(target.get("role") or "")
+                merged = set(
+                    _load_permissions_json(target.get("permissions_json"), target_role)
+                )
+                requested = set(
+                    _parse_permission_keys(request_row.get("permissions_json")) or ()
+                )
+                if target_role != "legal":
+                    requested.discard("reviews")
+                merged.update(requested)
                 normalized = tuple(sorted(merged, key=MODULE_ORDER.get))
                 cursor.execute(
                     f"""

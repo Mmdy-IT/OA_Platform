@@ -105,13 +105,16 @@ export function AdminPermissionsPage() {
   };
 
   const togglePermission = (key: PermissionKey) => {
+    if (key === "reviews" && editing?.role !== "legal") return;
     setDraftPermissions((current) =>
       current.includes(key) ? current.filter((item) => item !== key) : [...current, key],
     );
   };
 
   const toggleGroup = (modules: PermissionModule[], checked: boolean) => {
-    const keys = modules.map((module) => module.key);
+    const keys = modules
+      .map((module) => module.key)
+      .filter((key) => key !== "reviews" || editing?.role === "legal");
     setDraftPermissions((current) => {
       const rest = current.filter((key) => !keys.includes(key));
       return checked ? [...rest, ...keys] : rest;
@@ -334,7 +337,9 @@ export function AdminPermissionsPage() {
                 <span>已勾选 {draftPermissions.length} / {modules.length} 项</span>
               </div>
               {groups.map((group) => {
-                const groupKeys = group.modules.map((module) => module.key);
+                const groupKeys = group.modules
+                  .map((module) => module.key)
+                  .filter((key) => key !== "reviews" || editing.role === "legal");
                 const selectedCount = groupKeys.filter((key) => draftPermissions.includes(key)).length;
                 const allSelected = groupKeys.length > 0 && selectedCount === groupKeys.length;
                 const partiallySelected = selectedCount > 0 && !allSelected;
@@ -355,18 +360,20 @@ export function AdminPermissionsPage() {
                     </div>
                     {group.modules.map((module) => {
                       const checked = draftPermissions.includes(module.key);
+                      const reviewLocked = module.key === "reviews" && editing.role !== "legal";
                       return (
                         <label
                           key={module.key}
-                          className={`permission-option ${checked ? "checked" : ""}`}
+                          className={`permission-option ${checked ? "checked" : ""} ${reviewLocked ? "disabled" : ""}`}
                         >
                           <Checkbox
                             checked={checked}
+                            disabled={reviewLocked}
                             onChange={() => togglePermission(module.key)}
                           />
                           <div>
                             <strong>{module.label}</strong>
-                            <span>{module.description}</span>
+                            <span>{reviewLocked ? "仅法务角色可开通此权限" : module.description}</span>
                           </div>
                         </label>
                       );

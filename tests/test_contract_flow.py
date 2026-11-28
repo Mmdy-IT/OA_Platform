@@ -63,6 +63,12 @@ def test_business_to_legal_contract_flow(client, login_as):
         json={"decision": "approve", "comment": "ok"},
     ).status_code == 403
 
+    login_as(client, "admin", "Admin@123")
+    assert client.post(
+        f"/api/contracts/{contract['id']}/review",
+        json={"decision": "approve", "comment": "管理员不应审批"},
+    ).status_code == 403
+
     login_as(client, "legal", "Legal@123")
     pending = client.get(
         "/api/contracts", params={"status": "pending", "scope": "all"}

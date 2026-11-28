@@ -10,7 +10,18 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -26,6 +37,7 @@ from .contract_number import (
 from .config import get_feishu_settings, password_login_enabled
 from .db import BASE_DIR, db_cursor, init_db, utcnow
 from .feishu import FeishuAuthError, get_feishu_client
+from . import feishu_notify
 from .field_validation import (
     invalid_field_summary,
     invalid_field_values,
@@ -2055,6 +2067,7 @@ def update_contract(
 @app.post("/api/contracts/{contract_id}/submit")
 def submit_contract(
     contract_id: int,
+    background_tasks: BackgroundTasks,
     user: dict = Depends(require_permission("contracts")),
 ):
     with db_cursor(commit=True) as conn:
@@ -2067,7 +2080,11 @@ def submit_contract(
             raise HTTPException(status_code=409, detail="当前状态不可提交审核")
         _ensure_bundle_companion(conn, row)
         if row["bundle_id"]:
-            return _submit_bundle(conn, row, user)
+            result = _submit_bundle(conn, row, user)
+            background_tasks.add_task(
+                feishu_notify.notify_legal_contract_pending, contract_id
+            )
+            return result
         fields = _fields_used_in_content(
             row["template_content"],
             _load_json(row["fields_schema_json"], []),
@@ -2132,6 +2149,9 @@ def submit_contract(
             template_version=row["template_version"],
             contract_category=row["template_category"],
         )
+        background_tasks.add_task(
+            feishu_notify.notify_legal_contract_pending, contract_id
+        )
         return _fetch_contract(conn, contract_id, user)
 
 
@@ -2171,8 +2191,11 @@ def withdraw_contract(
 def review_contract(
     contract_id: int,
     payload: ReviewRequest,
+    background_tasks: BackgroundTasks,
     user: dict = Depends(require_permission("reviews")),
 ):
+    if user["role"] != "legal":
+        raise HTTPException(status_code=403, detail="仅法务角色可以审批合同")
     with db_cursor(commit=True) as conn:
         row = conn.execute("SELECT * FROM contracts WHERE id = ?", (contract_id,)).fetchone()
         if not row:
@@ -2214,6 +2237,13 @@ def review_contract(
             contract_category=row["template_category"],
             review_comment=payload.comment,
             approved_at=now if new_status == "approved" else None,
+        )
+        background_tasks.add_task(
+            feishu_notify.notify_contract_review_result,
+            contract_id,
+            decision=payload.decision,
+            comment=payload.comment,
+            reviewer_name=user["display_name"],
         )
         return _fetch_contract(conn, contract_id, user)
 
