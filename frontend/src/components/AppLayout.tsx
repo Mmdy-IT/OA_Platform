@@ -352,7 +352,11 @@ export function AppLayout() {
           </div>
         </Header>
         <Content className="app-content">
-          <div className="content-container">
+          <div
+            className={`content-container ${
+              location.pathname === "/dashboard" ? "content-container-workbench" : ""
+            }`}
+          >
             <Outlet />
           </div>
         </Content>
