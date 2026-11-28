@@ -2292,31 +2292,6 @@ button.template-card:hover {
   gap: 6px;
 }
 
-.oa-home-hero-actions {
-  display: flex;
-  margin-top: 27px;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.oa-home-hero-actions .ant-btn {
-  height: 42px;
-  border-radius: 9px;
-  font-size: 12px;
-}
-
-.oa-home-hero-actions .ant-btn-primary {
-  border-color: var(--palette-paper) !important;
-  color: var(--palette-sage) !important;
-  background: var(--palette-paper) !important;
-}
-
-.oa-home-hero-actions .ant-btn-default {
-  border-color: rgba(213, 218, 206, 0.45);
-  color: var(--palette-paper);
-  background: rgba(252, 252, 251, 0.08);
-}
-
 .oa-home-hero-art {
   position: relative;
   z-index: 1;

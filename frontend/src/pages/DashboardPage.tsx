@@ -7,7 +7,6 @@ import {
   ClockCircleOutlined,
   FileTextOutlined,
   IdcardOutlined,
-  PlusOutlined,
   ShopOutlined,
   TeamOutlined,
   UserOutlined,
@@ -129,16 +128,6 @@ export function DashboardPage() {
             <span><CalendarOutlined /> {dayjs().format("YYYY年M月D日")} {WEEKDAYS[dayjs().day()]}</span>
             <span><UserOutlined /> {user?.department || "部门未设置"}</span>
             <span>{user?.job_title || "岗位未设置"}</span>
-          </div>
-          <div className="oa-home-hero-actions">
-            {canUseContracts && (
-              <Button type="primary" size="large" icon={<FileTextOutlined />} onClick={() => navigate("/contract-overview")}>
-                进入合同管理
-              </Button>
-            )}
-            <Button size="large" icon={<PlusOutlined />} onClick={() => navigate("/permission-requests")}>
-              申请模块权限
-            </Button>
           </div>
         </div>
         <div className="oa-home-hero-art" aria-hidden="true">
