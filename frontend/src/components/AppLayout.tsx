@@ -29,6 +29,7 @@ const { Header, Sider, Content } = Layout;
 
 const PAGE_NAMES: Record<string, string> = {
   "/dashboard": "工作台",
+  "/contract-overview": "合同管理 / 合同概览",
   "/contracts": "合同管理 / 合同列表",
   "/party-a": "合同管理 / 甲方主体信息",
   "/parties": "合同管理 / 乙方主体信息",
@@ -45,6 +46,7 @@ function modulePathFor(pathname: string): string {
   if (pathname.startsWith("/templates")) return "/templates";
   if (pathname.startsWith("/bundle-rules")) return "/bundle-rules";
   if (pathname.startsWith("/permission-requests")) return "/permission-requests";
+  if (pathname.startsWith("/contract-overview")) return "/contract-overview";
   if (pathname.startsWith("/party-a")) return "/party-a";
   if (pathname.startsWith("/parties")) return "/parties";
   if (pathname.startsWith("/contracts")) return "/contracts";
@@ -110,6 +112,13 @@ export function AppLayout() {
     }
 
     const contractChildren: NonNullable<MenuProps["items"]> = [];
+    if (granted.has("contracts") || granted.has("reviews")) {
+      contractChildren.push({
+        key: "/contract-overview",
+        icon: <FileProtectOutlined />,
+        label: "合同概览",
+      });
+    }
     if (granted.has("contracts")) {
       contractChildren.push({
         key: "/contracts",

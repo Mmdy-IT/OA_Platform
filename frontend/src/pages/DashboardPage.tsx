@@ -1,24 +1,30 @@
 import {
   ArrowRightOutlined,
+  AuditOutlined,
+  BankOutlined,
+  BookOutlined,
+  CalendarOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   FileAddOutlined,
-  FileDoneOutlined,
   FileProtectOutlined,
   FileTextOutlined,
-  InboxOutlined,
+  IdcardOutlined,
   PlusOutlined,
   SafetyCertificateOutlined,
+  ShopOutlined,
+  TeamOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
-import { Button, Empty, Skeleton, Tag } from "antd";
-import { useEffect, useState } from "react";
+import { Button, Skeleton, Tag } from "antd";
+import dayjs from "dayjs";
+import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api";
 import { hasPermission, useAuth } from "../auth";
-import { PageHeader } from "../components/PageHeader";
-import { StatusTag } from "../components/StatusTag";
 import type { DashboardData } from "../types";
-import { formatRelative, STATUS_META } from "../utils";
+import { initials } from "../utils";
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -28,10 +34,63 @@ function greeting(): string {
   return "晚上好";
 }
 
+const OA_MODULES = [
+  {
+    key: "contract",
+    name: "合同管理",
+    description: "起草、审批、用印归档与合同台账",
+    icon: <FileTextOutlined />,
+    status: "已上线",
+    live: true,
+  },
+  {
+    key: "hr",
+    name: "人事管理",
+    description: "员工档案、组织信息与人事流程",
+    icon: <TeamOutlined />,
+    status: "规划中",
+    live: false,
+  },
+  {
+    key: "finance",
+    name: "财务协同",
+    description: "费用报销、付款申请与预算协同",
+    icon: <BankOutlined />,
+    status: "规划中",
+    live: false,
+  },
+  {
+    key: "procurement",
+    name: "采购管理",
+    description: "采购申请、询比价与供应商协同",
+    icon: <ShopOutlined />,
+    status: "规划中",
+    live: false,
+  },
+  {
+    key: "admin",
+    name: "行政办公",
+    description: "用章、证照、资产与行政服务",
+    icon: <IdcardOutlined />,
+    status: "规划中",
+    live: false,
+  },
+  {
+    key: "knowledge",
+    name: "知识中心",
+    description: "制度、模板与组织知识沉淀",
+    icon: <BookOutlined />,
+    status: "规划中",
+    live: false,
+  },
+];
+
+const WEEKDAYS = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+
 export function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [contractData, setContractData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -40,10 +99,12 @@ export function DashboardPage() {
     api
       .dashboard()
       .then((result) => {
-        if (active) setData(result);
+        if (active) setContractData(result);
       })
       .catch((caught) => {
-        if (active) setError(caught instanceof ApiError ? caught.message : "工作台加载失败");
+        if (active) {
+          setError(caught instanceof ApiError ? caught.message : "工作台数据加载失败");
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -53,228 +114,218 @@ export function DashboardPage() {
     };
   }, []);
 
-  const isReviewer = hasPermission(user, "reviews");
+  const displayName = user?.display_name.split(" · ")[0] || user?.username || "";
+  const canUseContracts = hasPermission(user, "contracts") || hasPermission(user, "reviews");
   const canCreate = hasPermission(user, "contracts");
-  const canManageTemplates = hasPermission(user, "templates");
+  const canReview = hasPermission(user, "reviews");
+  const pendingCount = contractData?.pending_contracts.length || 0;
   const contractPath = canCreate ? "/contracts" : "/reviews";
-  const stats = data?.stats;
-  const pendingCount = data?.pending_contracts.length || 0;
+  const quickActions = useMemo(
+    () =>
+      [
+        canUseContracts
+          ? {
+              key: "overview",
+              label: "合同概览",
+              description: "查看合同流转与待办",
+              icon: <FileProtectOutlined />,
+              onClick: () => navigate("/contract-overview"),
+            }
+          : null,
+        canCreate
+          ? {
+              key: "new",
+              label: "发起合同",
+              description: "从标准模板开始起草",
+              icon: <FileAddOutlined />,
+              onClick: () => navigate("/contracts/new"),
+            }
+          : null,
+        canReview
+          ? {
+              key: "review",
+              label: "审核队列",
+              description: "处理待审合同",
+              icon: <AuditOutlined />,
+              onClick: () => navigate("/reviews"),
+            }
+          : null,
+        {
+          key: "permission",
+          label: "权限申请",
+          description: "申请业务模块使用权限",
+          icon: <SafetyCertificateOutlined />,
+          onClick: () => navigate("/permission-requests"),
+        },
+      ].filter(Boolean) as {
+        key: string;
+        label: string;
+        description: string;
+        icon: ReactNode;
+        onClick: () => void;
+      }[],
+    [canCreate, canReview, canUseContracts, navigate],
+  );
 
   return (
-    <div className="page-stack">
-      <PageHeader
-        eyebrow="OVERVIEW · 合同管理"
-        title={`${greeting()}，${user?.display_name.split(" · ")[0] || ""}`}
-        description={isReviewer ? "这里汇总了合同流转情况和待你处理的法务审核任务。" : "从模板开始起草合同，跟踪审核进度，获取审核通过的正式 PDF。"}
-        actions={
-          canCreate ? (
-            <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => navigate("/contracts/new")}>
-              新建合同
+    <div className="page-stack oa-home-page">
+      <section className="oa-home-hero">
+        <div className="oa-home-hero-copy">
+          <span className="oa-home-eyebrow">MMDY BUSINESS OS · 企业协同中枢</span>
+          <h1>{greeting()}，{displayName}</h1>
+          <p>
+            欢迎进入绵绵聚道企业协同 OA。以统一身份、统一流程和统一数据，
+            连接合同、人事、财务、采购及行政等全线业务。
+          </p>
+          <div className="oa-home-hero-meta">
+            <span><CalendarOutlined /> {dayjs().format("YYYY年M月D日")} {WEEKDAYS[dayjs().day()]}</span>
+            <span><UserOutlined /> {user?.department || "部门未设置"}</span>
+            <span>{user?.job_title || "岗位未设置"}</span>
+          </div>
+          <div className="oa-home-hero-actions">
+            {canUseContracts && (
+              <Button type="primary" size="large" icon={<FileTextOutlined />} onClick={() => navigate("/contract-overview")}>
+                进入合同管理
+              </Button>
+            )}
+            <Button size="large" icon={<PlusOutlined />} onClick={() => navigate("/permission-requests")}>
+              申请模块权限
             </Button>
-          ) : undefined
-        }
-      />
+          </div>
+        </div>
+        <div className="oa-home-hero-art" aria-hidden="true">
+          <div className="oa-orbit oa-orbit-one" />
+          <div className="oa-orbit oa-orbit-two" />
+          <div className="oa-core-card">
+            <span className="oa-core-mark">MM</span>
+            <strong>统一业务门户</strong>
+            <small>ONE ENTERPRISE · ONE WORKSPACE</small>
+          </div>
+          <div className="oa-art-chip oa-art-chip-top">
+            <CheckCircleOutlined />
+            <span>流程在线</span>
+          </div>
+          <div className="oa-art-chip oa-art-chip-bottom">
+            <ClockCircleOutlined />
+            <span>{pendingCount} 项合同待办</span>
+          </div>
+        </div>
+      </section>
 
       {error && <div className="inline-error">{error}</div>}
 
-      <section className="dashboard-hero">
-        <div className="hero-copy">
-          <Tag className="hero-tag"><SafetyCertificateOutlined /> 合同全流程在线协同</Tag>
-          <h2>把复杂的合同流程，<br /><span>变成清晰的每一步。</span></h2>
-          <p>法务统一模板 · 业务按需填写 · 审核留痕 · PDF 归档</p>
-          <div className="hero-actions">
-            {canCreate && (
-              <Button type="primary" icon={<FileAddOutlined />} onClick={() => navigate("/contracts/new")}>
-                起草新合同
-              </Button>
-            )}
-            {isReviewer ? (
-              <Button icon={<InboxOutlined />} onClick={() => navigate("/reviews")}>
-                查看待审任务
-              </Button>
-            ) : (
-              <Button icon={<FileTextOutlined />} onClick={() => navigate(contractPath)}>
-                {canCreate ? "查看我的合同" : "查看审核任务"}
-              </Button>
-            )}
+      <section className="oa-section">
+        <div className="oa-section-head">
+          <div>
+            <span className="panel-eyebrow">BUSINESS MODULES</span>
+            <h2>业务应用</h2>
           </div>
+          <span>统一入口逐步接入企业全线业务</span>
         </div>
-        <div className="hero-visual" aria-hidden="true">
-          <div className="hero-orbit orbit-one" />
-          <div className="hero-orbit orbit-two" />
-          <div className="hero-document">
-            <div className="hero-document-head">
-              <FileDoneOutlined />
-              <span>CONTRACT</span>
-            </div>
-            <div className="hero-document-line wide" />
-            <div className="hero-document-line" />
-            <div className="hero-document-line medium" />
-            <div className="hero-document-stamp"><CheckCircleOutlined /> LEGAL APPROVED</div>
-          </div>
-          <div className="hero-float-card float-top">
-            <span className="float-icon green"><CheckCircleOutlined /></span>
-            <div><strong>审核通过</strong><span>可下载 PDF</span></div>
-          </div>
-          <div className="hero-float-card float-bottom">
-            <span className="float-icon blue"><ClockCircleOutlined /></span>
-            <div><strong>{pendingCount} 份待审</strong><span>法务处理中</span></div>
-          </div>
-        </div>
-      </section>
-
-      <section className="stats-grid">
-        {loading || !stats ? (
-          Array.from({ length: 4 }).map((_, index) => (
-            <div className="stat-card" key={index}><Skeleton active paragraph={{ rows: 1 }} /></div>
-          ))
-        ) : (
-          <>
-            <button className="stat-card stat-navy" type="button" onClick={() => navigate(contractPath)}>
-              <div className="stat-icon"><FileTextOutlined /></div>
-              <div className="stat-copy"><span>{isReviewer ? "合同总量" : "我的合同"}</span><strong>{stats.total}</strong></div>
-              <div className="stat-foot">全部合同记录 <ArrowRightOutlined /></div>
-            </button>
-            <button className="stat-card stat-amber" type="button" onClick={() => navigate(isReviewer ? "/reviews" : "/contracts?status=pending")}>
-              <div className="stat-icon"><ClockCircleOutlined /></div>
-              <div className="stat-copy"><span>{isReviewer ? "待我审核" : "待审核"}</span><strong>{stats.pending}</strong></div>
-              <div className="stat-foot">等待法务处理 <ArrowRightOutlined /></div>
-            </button>
-            <button className="stat-card stat-green" type="button" onClick={() => navigate(canCreate ? "/contracts?status=approved" : "/reviews")}>
-              <div className="stat-icon"><FileDoneOutlined /></div>
-              <div className="stat-copy"><span>已通过</span><strong>{stats.approved}</strong></div>
-              <div className="stat-foot">可下载正式 PDF <ArrowRightOutlined /></div>
-            </button>
+        <div className="oa-module-grid">
+          {OA_MODULES.map((module) => (
             <button
-              className="stat-card stat-blue"
               type="button"
-              onClick={() => navigate(canManageTemplates ? "/templates" : canCreate ? "/contracts/new" : contractPath)}
+              key={module.key}
+              className={`oa-module-card ${module.live && canUseContracts ? "is-live" : "is-planned"}`}
+              disabled={!module.live || !canUseContracts}
+              onClick={() => module.live && navigate("/contract-overview")}
             >
-              <div className="stat-icon"><FileProtectOutlined /></div>
-              <div className="stat-copy"><span>{canManageTemplates ? "可用模板" : "模板库"}</span><strong>{stats.templates}</strong></div>
-              <div className="stat-foot">{canManageTemplates ? "维护标准合同模板" : "选择模板快速起草"} <ArrowRightOutlined /></div>
+              <span className="oa-module-icon">{module.icon}</span>
+              <span className="oa-module-copy">
+                <strong>{module.name}</strong>
+                <small>{module.description}</small>
+              </span>
+              <Tag bordered={false} className={module.live ? "oa-live-tag" : "oa-planned-tag"}>
+                {module.status}
+              </Tag>
             </button>
-          </>
-        )}
+          ))}
+        </div>
       </section>
 
-      <section className="dashboard-grid">
-        <div className="panel recent-panel">
+      <section className="oa-home-grid">
+        <div className="panel oa-quick-panel">
           <div className="panel-head">
             <div>
-              <span className="panel-eyebrow">RECENT ACTIVITY</span>
-              <h3>最近合同</h3>
+              <span className="panel-eyebrow">QUICK ACCESS</span>
+              <h3>快捷入口</h3>
             </div>
-            <Button type="link" onClick={() => navigate("/contracts")}>查看全部 <ArrowRightOutlined /></Button>
+          </div>
+          <div className="oa-quick-grid">
+            {quickActions.map((action) => (
+              <button type="button" key={action.key} className="oa-quick-item" onClick={action.onClick}>
+                <span>{action.icon}</span>
+                <div>
+                  <strong>{action.label}</strong>
+                  <small>{action.description}</small>
+                </div>
+                <ArrowRightOutlined />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="panel oa-profile-panel">
+          <div className="oa-profile-head">
+            <span className="oa-profile-avatar">{initials(user?.display_name)}</span>
+            <div>
+              <strong>{user?.display_name}</strong>
+              <span>{user?.job_title || "岗位未设置"}</span>
+            </div>
+          </div>
+          <div className="oa-profile-list">
+            <div><span>所属部门</span><strong>{user?.department || "未设置"}</strong></div>
+            <div><span>系统账号</span><strong>{user?.username}</strong></div>
+            <div><span>今日日期</span><strong>{dayjs().format("YYYY-MM-DD")}</strong></div>
+          </div>
+        </div>
+
+        <div className="panel oa-todo-panel">
+          <div className="panel-head">
+            <div>
+              <span className="panel-eyebrow">TO-DO</span>
+              <h3>我的待办</h3>
+            </div>
+            {pendingCount > 0 && <span className="oa-count-badge">{pendingCount}</span>}
           </div>
           {loading ? (
-            <Skeleton active paragraph={{ rows: 7 }} />
-          ) : data?.recent_contracts.length ? (
-            <div className="contract-list">
-              {data.recent_contracts.map((contract) => (
-                <button
-                  type="button"
-                  className="contract-list-row"
-                  key={contract.id}
-                  onClick={() => navigate(`/contracts/${contract.id}`)}
-                >
-                  <div className={`contract-file-icon ${STATUS_META[contract.status].tone}`}>
-                    <FileTextOutlined />
+            <Skeleton active paragraph={{ rows: 3 }} />
+          ) : contractData?.pending_contracts.length ? (
+            <div className="oa-todo-list">
+              {contractData.pending_contracts.slice(0, 3).map((contract) => (
+                <button type="button" key={contract.id} onClick={() => navigate(`/contracts/${contract.id}`)}>
+                  <span className="oa-todo-dot" />
+                  <div>
+                    <strong>{contract.title}</strong>
+                    <small>{canReview ? `${contract.creator_name} · ` : ""}{contract.contract_no || "配套通用合同"}</small>
                   </div>
-                  <div className="contract-list-main">
-                    <div className="contract-list-title">
-                      <strong>{contract.title}</strong>
-                      <StatusTag status={contract.status} />
-                    </div>
-                    <div className="contract-list-meta">
-                      <span>{contract.contract_no}</span>
-                      <span>{contract.template_name}</span>
-                      {isReviewer && <span>发起人：{contract.creator_name}</span>}
-                    </div>
-                  </div>
-                  <div className="contract-list-time">{formatRelative(contract.updated_at)}</div>
-                  <ArrowRightOutlined className="contract-list-arrow" />
+                  <ArrowRightOutlined />
                 </button>
               ))}
             </div>
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有合同记录">
-              {canCreate && <Button type="primary" onClick={() => navigate("/contracts/new")}>起草第一份合同</Button>}
-            </Empty>
+            <div className="oa-empty-todo">
+              <CheckCircleOutlined />
+              <strong>暂无待办</strong>
+              <span>当前合同流程均已处理完成</span>
+            </div>
           )}
+          <Button block onClick={() => navigate(canReview ? "/reviews" : contractPath)}>
+            查看全部待办
+          </Button>
         </div>
+      </section>
 
-        <div className="dashboard-side">
-          <div className="panel todo-panel">
-            <div className="panel-head">
-              <div>
-                <span className="panel-eyebrow">ACTION REQUIRED</span>
-                <h3>{isReviewer ? "待审核队列" : "我的待办"}</h3>
-              </div>
-              {isReviewer && pendingCount > 0 && <span className="count-badge">{pendingCount}</span>}
-            </div>
-            {loading ? (
-              <Skeleton active paragraph={{ rows: 4 }} />
-            ) : data?.pending_contracts.length ? (
-              <div className="todo-list">
-                {data.pending_contracts.map((contract) => (
-                  <button
-                    type="button"
-                    className="todo-row"
-                    key={contract.id}
-                    onClick={() => navigate(`/contracts/${contract.id}`)}
-                  >
-                    <span className="todo-indicator" />
-                    <div>
-                      <strong>{contract.title}</strong>
-                      <span>{isReviewer ? `${contract.creator_name} · ` : ""}{formatRelative(contract.submitted_at)}提交</span>
-                    </div>
-                    <ArrowRightOutlined />
-                  </button>
-                ))}
-                <Button block onClick={() => navigate(isReviewer ? "/reviews" : "/contracts?status=pending")}>
-                  查看全部待办
-                </Button>
-              </div>
-            ) : (
-              <div className="empty-compact">
-                <CheckCircleOutlined />
-                <strong>当前没有待办</strong>
-                <span>{isReviewer ? "审核队列已清空" : "所有合同均无待处理事项"}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="panel status-panel">
-            <div className="panel-head">
-              <div>
-                <span className="panel-eyebrow">PIPELINE</span>
-                <h3>流程分布</h3>
-              </div>
-            </div>
-            {loading || !stats ? (
-              <Skeleton active paragraph={{ rows: 4 }} />
-            ) : (
-              <div className="status-bars">
-                {(["draft", "pending", "approved", "rejected"] as const).map((status) => {
-                  const count = stats[status];
-                  const percent = stats.total ? Math.round((count / stats.total) * 100) : 0;
-                  return (
-                    <div className="status-bar-row" key={status}>
-                      <div className="status-bar-label">
-                        <span className={`bar-dot ${STATUS_META[status].tone}`} />
-                        <span>{STATUS_META[status].label}</span>
-                        <strong>{count}</strong>
-                      </div>
-                      <div className="bar-track">
-                        <div className={`bar-fill ${STATUS_META[status].tone}`} style={{ width: `${Math.max(percent, count ? 6 : 0)}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+      <section className="panel oa-notice-panel">
+        <div>
+          <span className="panel-eyebrow">PLATFORM NOTICE</span>
+          <h3>平台动态</h3>
+        </div>
+        <div className="oa-notice-list">
+          <div><Tag className="oa-live-tag">已上线</Tag><span>合同管理模块正式运行，支持模板、合同包、法务审核和 PDF 归档。</span></div>
+          <div><Tag className="oa-planned-tag">规划中</Tag><span>人事、财务、采购、行政和知识中心将按业务优先级逐步接入。</span></div>
+          <div><Tag className="oa-planned-tag">统一身份</Tag><span>飞书免登已启用，人员岗位、部门和权限由组织信息统一维护。</span></div>
         </div>
       </section>
     </div>

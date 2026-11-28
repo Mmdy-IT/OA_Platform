@@ -12,6 +12,7 @@ import { AppLayout } from "./components/AppLayout";
 import { AdminPermissionsPage } from "./pages/AdminPermissionsPage";
 import { BundleRulesPage } from "./pages/BundleRulesPage";
 import { ContractDetailPage } from "./pages/ContractDetailPage";
+import { ContractOverviewPage } from "./pages/ContractOverviewPage";
 import { ContractsPage } from "./pages/ContractsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { EditContractPage } from "./pages/EditContractPage";
@@ -31,20 +32,21 @@ export default function App() {
       locale={zhCN}
       theme={{
         token: {
-          colorPrimary: "#5A6A46",
-          colorInfo: "#5A6A46",
-          colorSuccess: "#188764",
-          colorWarning: "#c47b0a",
-          colorError: "#d64545",
-          colorText: "#24301D",
-          colorTextSecondary: "#6B765F",
-          colorBorder: "#E1E4D8",
-          colorBgLayout: "#F7F6F1",
+          colorPrimary: "#465132",
+          colorInfo: "#5C6948",
+          colorSuccess: "#465132",
+          colorWarning: "#5C6948",
+          colorError: "#465132",
+          colorText: "#465132",
+          colorTextSecondary: "#5C6948",
+          colorBorder: "#D5DACE",
+          colorBgLayout: "#FCFCFB",
+          colorBgContainer: "#FCFCFB",
           borderRadius: 10,
           controlHeight: 38,
           fontFamily:
             '"Inter", "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif',
-          boxShadowSecondary: "0 18px 50px rgba(36, 48, 29, 0.12)",
+          boxShadowSecondary: "0 18px 50px rgba(70, 81, 50, 0.12)",
         },
         components: {
           Button: {
@@ -53,13 +55,13 @@ export default function App() {
             primaryShadow: "none",
           },
           Input: {
-            activeShadow: "0 0 0 3px rgba(90, 106, 70, 0.10)",
+            activeShadow: "0 0 0 3px rgba(92, 105, 72, 0.12)",
           },
           Table: {
-            headerBg: "#F4F6EF",
-            headerColor: "#6A735F",
-            rowHoverBg: "#F7F9F2",
-            borderColor: "#E6E9DE",
+            headerBg: "#D5DACE",
+            headerColor: "#465132",
+            rowHoverBg: "#FCFCFB",
+            borderColor: "#D5DACE",
           },
           Menu: {
             darkItemBg: "transparent",
@@ -86,6 +88,14 @@ export default function App() {
                   element={
                     <RequirePermission permissions={["dashboard"]}>
                       <DashboardPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/contract-overview"
+                  element={
+                    <RequirePermission permissions={["contracts", "reviews"]}>
+                      <ContractOverviewPage />
                     </RequirePermission>
                   }
                 />
